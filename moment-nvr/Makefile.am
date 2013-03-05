@@ -15,13 +15,27 @@ AM_CXXFLAGS += $(COMMON_CFLAGS)
 
 INCLUDES = -I$(top_srcdir)
 
-moment_nvr_private_headers =
+moment_nvr_private_headers =    \
+        types.h                 \
+        naming_scheme.h         \
+        nvr_file_iterator.h     \
+        channel_recorder.h      \
+        media_recorder.h        \
+        media_viewer.h          \
+        moment_nvr_module.h
 
 moment_nvr_target_headers =
 
 moment_nvrdir = $(libdir)/moment-1.0
 moment_nvr_LTLIBRARIES = libmoment-nvr-1.0.la
 libmoment_nvr_1_0_la_SOURCES =	\
+        types.cpp               \
+        naming_scheme.cpp       \
+        nvr_file_iterator.h     \
+        channel_recorder.cpp    \
+        media_recorder.cpp      \
+        media_viewer.cpp        \
+        moment_nvr_module.cpp   \
         mod_nvr.cpp
 
 moment_nvr_extra_dist =

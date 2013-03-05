@@ -1,26 +1,22 @@
 #include <libmary/module_init.h>
-#include <moment/libmoment.h>
+
+#include <moment-nvr/moment_nvr_module.h>
 
 
 using namespace M;
 using namespace Moment;
+using namespace MomentNvr;
 
-
-namespace {
-class MomentNvrModule : public Object
-{
-private:
-};
-}
 
 static MomentNvrModule *moment_nvr;
-
 
 static void momentNvrInit ()
 {
     logD_ (_func_);
 
-    moment_nvr = new MomentNvrModule;
+    moment_nvr = new (std::nothrow) MomentNvrModule;
+    assert (moment_nvr);
+    moment_nvr->init (MomentServer::getInstance());
 }
 
 static void momentNvrUnload ()
