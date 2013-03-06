@@ -20,8 +20,9 @@ private:
     // year/month/day/hour/minute/seconds
     unsigned cur_pos [6];
 
-    StRef<String> makePathForDepth (unsigned  depth,
-                                    unsigned * mt_nonnull pos) const;
+    static StRef<String> makePathForDepth (ConstMemory  stream_name,
+                                           unsigned     depth,
+                                           unsigned    * mt_nonnull pos);
 
     StRef<String> getNext_rec (Vfs::VfsDirectory * mt_nonnull parent_dir,
                                ConstMemory        parent_dir_name,

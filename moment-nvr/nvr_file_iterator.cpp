@@ -7,8 +7,9 @@ using namespace Moment;
 namespace MomentNvr {
 
 StRef<String>
-NvrFileIterator::makePathForDepth (unsigned   const depth,
-                                   unsigned * const mt_nonnull pos) const
+NvrFileIterator::makePathForDepth (ConstMemory   const stream_name,
+                                   unsigned      const depth,
+                                   unsigned    * const mt_nonnull pos)
 {
     StRef<String> str;
 
