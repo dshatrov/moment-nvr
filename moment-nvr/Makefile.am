@@ -31,7 +31,7 @@ moment_nvr_LTLIBRARIES = libmoment-nvr-1.0.la
 libmoment_nvr_1_0_la_SOURCES =	\
         types.cpp               \
         naming_scheme.cpp       \
-        nvr_file_iterator.h     \
+        nvr_file_iterator.cpp   \
         channel_recorder.cpp    \
         media_recorder.cpp      \
         media_viewer.cpp        \

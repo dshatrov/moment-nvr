@@ -18,13 +18,15 @@ private:
 
     bool got_first;
     // year/month/day/hour/minute/seconds
-    unsigned pos [6];
+    unsigned cur_pos [6];
 
-    StRef<String> makePathForDepth (unsigned depth) const;
+    StRef<String> makePathForDepth (unsigned  depth,
+                                    unsigned * mt_nonnull pos) const;
 
     StRef<String> getNext_rec (Vfs::VfsDirectory * mt_nonnull parent_dir,
                                ConstMemory        parent_dir_name,
-                               unsigned           depth);
+                               unsigned           depth,
+                               bool               parent_pos_match);
 
 public:
     StRef<String> getNext ();
