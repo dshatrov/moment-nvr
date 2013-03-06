@@ -456,28 +456,50 @@ MomentServer::ClientSession::Backend const MediaViewer::client_session_backend =
     rtmpStartStreaming
 };
 
-bool
-MediaViewer::rtmpStartStreaming (ConstMemory     const stream_name,
-                                 IpAddress       const client_addr,
-                                 VideoStream   * const mt_nonnull stream,
-                                 RecordingMode   const rec_mode,
-                                 CbDesc<MomentServer::StartStreamingCallback> const &cb,
-                                 Result        * const mt_nonnull ret_res,
-                                 void          * const _session)
+void
+MediaViewer::parseStreamParams_paramCallback (ConstMemory   const name,
+                                              ConstMemory   const value,
+                                              void        * const _stream_params)
 {
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name);
-    *ret_res = Result::Failure;
-    return true;
+    StreamParams * const stream_params = static_cast <StreamParams*> (_stream_params);
+
+    logD_ (_func, "name: ", name, ", value: ", value);
+
+    if (equal (name, "start")) {
+        Time start_unixtime_sec = 0;
+        if (strToUint64_safe (value, &start_unixtime_sec, 10 /* base */)) {
+            stream_params->start_unixtime_sec = start_unixtime_sec;
+        } else {
+            logE_ (_func, "bad \"start\" stream param: ", value);
+        }
+    }
+}
+
+void
+MediaViewer::parseStreamParams (ConstMemory    const stream_name_with_params,
+                                StreamParams * const mt_nonnull stream_params)
+{
+    ConstMemory const stream_name = stream_name_with_params;
+
+    Byte const * const name_sep = (Byte const *) memchr (stream_name.mem(), '?', stream_name.len());
+    if (name_sep) {
+        ConstMemory const params_mem = stream_name.region (name_sep + 1 - stream_name.mem());
+        logD_ (_func, "parameters: ", params_mem);
+        parseHttpParameters (params_mem,
+                             parseStreamParams_paramCallback,
+                             stream_params);
+    }
 }
 
 bool
 MediaViewer::rtmpStartWatching (ConstMemory        const stream_name,
+                                ConstMemory        const stream_name_with_params,
                                 IpAddress          const /* client_addr */,
                                 CbDesc<MomentServer::StartWatchingCallback> const & /* cb */,
                                 Ref<VideoStream> * const mt_nonnull ret_stream,
                                 void             * const _session)
 {
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name);
+    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name_with_params);
 
     Session * const session = static_cast <Session*> (_session);
 
@@ -487,6 +509,10 @@ MediaViewer::rtmpStartWatching (ConstMemory        const stream_name,
         *ret_stream = NULL;
         return true;
     }
+
+    StreamParams stream_params;
+    parseStreamParams (stream_name_with_params, &stream_params);
+    logD_ (_func, "start_unixtime_sec: ", stream_params.start_unixtime_sec);
 
     session->session_mutex.lock ();
     if (session->watching) {
@@ -500,8 +526,7 @@ MediaViewer::rtmpStartWatching (ConstMemory        const stream_name,
     session->stream = stream;
     session->stream_name = st_grab (new (std::nothrow) String (stream_name));
 
-    // TODO start_unixtime_sec
-    session->start_unixtime_sec = getUnixtime() - 5;
+    session->start_unixtime_sec = stream_params.start_unixtime_sec;
     session->stream_sbn = stream->getEventInformer()->subscribe (
             CbDesc<VideoStream::EventHandler> (&stream_handler, session, session));
 
@@ -510,6 +535,20 @@ MediaViewer::rtmpStartWatching (ConstMemory        const stream_name,
     session->session_mutex.unlock ();
 
     *ret_stream = stream;
+    return true;
+}
+
+bool
+MediaViewer::rtmpStartStreaming (ConstMemory     const stream_name,
+                                 IpAddress       const client_addr,
+                                 VideoStream   * const mt_nonnull stream,
+                                 RecordingMode   const rec_mode,
+                                 CbDesc<MomentServer::StartStreamingCallback> const &cb,
+                                 Result        * const mt_nonnull ret_res,
+                                 void          * const _session)
+{
+    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name);
+    *ret_res = Result::Failure;
     return true;
 }
 

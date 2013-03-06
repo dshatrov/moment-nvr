@@ -96,10 +96,27 @@ private:
     static void rtmpClientDisconnected (void *_session);
   mt_iface_end
 
+    struct StreamParams
+    {
+        Time start_unixtime_sec;
+
+        StreamParams ()
+            : start_unixtime_sec (0)
+        {}
+    };
+
+    static void parseStreamParams_paramCallback (ConstMemory  name,
+                                                 ConstMemory  value,
+                                                 void        *_stream_params);
+
+    static void parseStreamParams (ConstMemory   stream_name_with_params,
+                                   StreamParams * mt_nonnull stream_params);
+
   mt_iface (MomentServer::ClientSession::Backend)
     static MomentServer::ClientSession::Backend const client_session_backend;
 
     static bool rtmpStartWatching (ConstMemory       stream_name,
+                                   ConstMemory       stream_name_with_params,
                                    IpAddress         client_addr,
                                    CbDesc<MomentServer::StartWatchingCallback> const &cb,
                                    Ref<VideoStream> * mt_nonnull ret_stream,
