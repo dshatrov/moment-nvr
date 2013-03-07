@@ -195,7 +195,8 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
 }
 
 mt_mutex (mutex) Result
-MediaRecorder::openVdatFile (ConstMemory const _filename)
+MediaRecorder::openVdatFile (ConstMemory const _filename,
+                             Time        const start_unixtime_nanosec)
 {
     StRef<String> const filename = st_makeString (_filename, ".vdat");
 
@@ -234,6 +235,14 @@ MediaRecorder::openVdatFile (ConstMemory const _filename)
             Byte const header [] = { 'M', 'M', 'N', 'T',
                                      // Format version
                                      0, 0, 0, 1,
+                                     (Byte) ((start_unixtime_nanosec >> 56) & 0xff),
+                                     (Byte) ((start_unixtime_nanosec >> 48) & 0xff),
+                                     (Byte) ((start_unixtime_nanosec >> 40) & 0xff),
+                                     (Byte) ((start_unixtime_nanosec >> 32) & 0xff),
+                                     (Byte) ((start_unixtime_nanosec >> 24) & 0xff),
+                                     (Byte) ((start_unixtime_nanosec >> 16) & 0xff),
+                                     (Byte) ((start_unixtime_nanosec >>  8) & 0xff),
+                                     (Byte) ((start_unixtime_nanosec >>  0) & 0xff),
                                      // Header data length
                                      0, 0, 0, 0 };
 
@@ -323,7 +332,7 @@ MediaRecorder::doStartRecording (Time const cur_unixtime_nanosec)
         return Result::Failure;
     }
 
-    if (!openVdatFile (filename->mem()))
+    if (!openVdatFile (filename->mem(), cur_unixtime_nanosec))
         goto _failure;
 
     if (!openIdxFile (filename->mem()))
@@ -522,10 +531,10 @@ MediaRecorder::MediaRecorder ()
       got_unixtime_offset            (false),
       unixtime_offset_nanosec        (0),
       prv_unixtime_timestamp_nanosec (0),
-      next_idx_unixtime_nanosec      (0),
-      next_file_unixtime_nanosec     (0),
       got_pending_aac_seq_hdr        (false),
-      got_pending_avc_seq_hdr        (false)
+      got_pending_avc_seq_hdr        (false),
+      next_idx_unixtime_nanosec      (0),
+      next_file_unixtime_nanosec     (0)
 {
 }
 

@@ -5,6 +5,7 @@
 #include <moment/libmoment.h>
 
 #include <moment-nvr/media_recorder.h>
+#include <moment-nvr/nvr_cleaner.h>
 
 
 namespace MomentNvr {
@@ -26,7 +27,8 @@ private:
         mt_const Ref<Channel> channel;
         mt_const StRef<String> channel_name;
 
-        MediaRecorder media_recorder;
+        Ref<MediaRecorder> media_recorder;
+        Ref<NvrCleaner> nvr_cleaner;
     };
 
     mt_const Ref<MomentServer>   moment;

@@ -79,7 +79,9 @@ private:
                                            ConstMemory           header,
                                            Time                  unixtime_timestamp_nanosec);
 
-    mt_mutex (mutex) Result openVdatFile (ConstMemory _filename);
+    mt_mutex (mutex) Result openVdatFile (ConstMemory _filename,
+                                          Time        start_unixtime_nanosec);
+
     mt_mutex (mutex) Result openIdxFile  (ConstMemory _filename);
 
     mt_mutex (mutex) Result doStartRecording (Time cur_unixtime_nanosec);

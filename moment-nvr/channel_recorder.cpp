@@ -21,7 +21,7 @@ ChannelRecorder::channelStartItem (VideoStream * const stream,
     ChannelEntry * const channel_entry = static_cast <ChannelEntry*> (_channel_entry);
     logD_ (_func_);
     if (stream_changed)
-        channel_entry->media_recorder.setVideoStream (stream);
+        channel_entry->media_recorder->setVideoStream (stream);
 }
 
 void
@@ -32,7 +32,7 @@ ChannelRecorder::channelStopItem (VideoStream * const stream,
     ChannelEntry * const channel_entry = static_cast <ChannelEntry*> (_channel_entry);
     logD_ (_func_);
     if (stream_changed)
-        channel_entry->media_recorder.setVideoStream (stream);
+        channel_entry->media_recorder->setVideoStream (stream);
 }
 
 void
@@ -41,7 +41,7 @@ ChannelRecorder::channelNewVideoStream (VideoStream * const stream,
 {
     ChannelEntry * const channel_entry = static_cast <ChannelEntry*> (_channel_entry);
     logD_ (_func_);
-    channel_entry->media_recorder.setVideoStream (stream);
+    channel_entry->media_recorder->setVideoStream (stream);
 }
 
 void
@@ -83,11 +83,20 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
     channel_entry->thread_ctx = moment->getRecorderThreadPool()->grabThreadContext (ConstMemory() /* TODO filename */);
     channel_entry->channel = channel;
     channel_entry->channel_name = st_grab (new (std::nothrow) String (channel_info->channel_name));
-    channel_entry->media_recorder.init (moment->getPagePool (),
-                                        channel_entry->thread_ctx,
-                                        vfs,
-                                        naming_scheme,
-                                        channel_info->channel_name);
+
+    channel_entry->media_recorder = grab (new (std::nothrow) MediaRecorder);
+    channel_entry->media_recorder->init (moment->getPagePool (),
+                                         channel_entry->thread_ctx,
+                                         vfs,
+                                         naming_scheme,
+                                         channel_info->channel_name);
+
+    channel_entry->nvr_cleaner = grab (new (std::nothrow) NvrCleaner);
+    channel_entry->nvr_cleaner->init (moment->getServerApp()->getServerContext()->getMainThreadContext()->getTimers(),
+                                      vfs,
+                                      channel_info->channel_name,
+//                                      3600 /* max_age_sec */);
+                                      120 /* max_age_sec */);
 
     mutex.lock ();
 #warning TODO Deal with duplicate channel names.
@@ -101,12 +110,12 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
             channel->channelUnlock ();
             doDestroyChannel (channel_entry);
         } else {
-            channel_entry->media_recorder.setVideoStream (channel->getVideoStream_unlocked());
+            channel_entry->media_recorder->setVideoStream (channel->getVideoStream_unlocked());
             channel->getEventInformer()->subscribe_unlocked (
                     CbDesc<Channel::ChannelEvents> (&channel_events, channel_entry, channel_entry));
             channel->channelUnlock ();
 
-            channel_entry->media_recorder.startRecording ();
+            channel_entry->media_recorder->startRecording ();
         }
     }
 }

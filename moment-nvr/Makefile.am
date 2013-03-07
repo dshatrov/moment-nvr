@@ -19,6 +19,7 @@ moment_nvr_private_headers =    \
         types.h                 \
         naming_scheme.h         \
         nvr_file_iterator.h     \
+        nvr_cleaner.h           \
         channel_recorder.h      \
         media_recorder.h        \
         media_viewer.h          \
@@ -32,6 +33,7 @@ libmoment_nvr_1_0_la_SOURCES =	\
         types.cpp               \
         naming_scheme.cpp       \
         nvr_file_iterator.cpp   \
+        nvr_cleaner.cpp         \
         channel_recorder.cpp    \
         media_recorder.cpp      \
         media_viewer.cpp        \
