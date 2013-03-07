@@ -48,7 +48,7 @@ MediaViewer::tryOpenNextFile (Session * const session)
         session->vdat_file = vfs->openFile (vdat_filename->mem(), 0 /* open_flags */, FileAccessMode::ReadOnly);
         if (!session->vdat_file) {
             logE_ (_func, "vfs->openFile() failed for filename ",
-                   filename, ": ", exc->toString());
+                   vdat_filename, ": ", exc->toString());
             return false;
         }
     }
@@ -61,7 +61,7 @@ MediaViewer::readFileHeader (Session * const session)
 {
     File * const file = session->vdat_file->getFile();
 
-    Byte header [12];
+    Byte header [20];
     Size bytes_read = 0;
     IoResult const res = file->readFull (Memory::forObject (header), &bytes_read);
     if (res == IoResult::Error) {
@@ -95,6 +95,10 @@ MediaViewer::readFrame (Session * const session)
 {
     File * const file = session->vdat_file->getFile();
 
+    // TODO Config parameter for 'burst_limit'.
+    Size const burst_limit = 1 << 23 /* 8 Mb */;
+
+    Size total_read = 0;
     for (;;) {
         FileSize fpos = 0;
         if (!file->tell (&fpos)) {
@@ -282,7 +286,11 @@ MediaViewer::readFrame (Session * const session)
                 return;
             }
         }
-    }
+
+        total_read += msg_ext_len;
+        if (total_read >= burst_limit)
+            break;
+    } // for (;;)
 }
 
 mt_mutex (Session::session_mutex) void
