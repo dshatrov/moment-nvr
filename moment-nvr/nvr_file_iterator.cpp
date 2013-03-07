@@ -6,6 +6,8 @@ using namespace Moment;
 
 namespace MomentNvr {
 
+static LogGroup libMary_logGroup_file_iter ("mod_nvr.file_iter", LogLevel::I);
+
 StRef<String>
 NvrFileIterator::makePathForDepth (ConstMemory   const stream_name,
                                    unsigned      const depth,
@@ -36,7 +38,7 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
 {
     unsigned const target = (parent_pos_match ? cur_pos [depth] : 0);
 
-    logD_ (_func, "depth: ", depth, ", parent_dir_name: ", parent_dir_name, ", target: ", target, " pp_match: ", parent_pos_match);
+    logD (file_iter, _func, "depth: ", depth, ", parent_dir_name: ", parent_dir_name, ", target: ", target, " pp_match: ", parent_pos_match);
 
     bool got_best_number = false;
     bool best_is_vdat = false;
@@ -52,9 +54,9 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
         StRef<String> const dir_name = st_makeString (parent_dir_name, "/", fmt, target);
         Ref<Vfs::VfsDirectory> const dir = vfs->openDirectory (dir_name->mem());
         if (dir) {
-            logD_ (_func, "descending into ", dir_name);
+            logD (file_iter, _func, "descending into ", dir_name);
             if (StRef<String> const str = getNext_rec (dir, dir_name->mem(), depth + 1)) {
-                logD_ (_func, "result: ", str);
+                logD (file_iter, _func, "result: ", str);
                 return str;
             }
         }
@@ -76,7 +78,7 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
 
             Uint32 number = 0;
             if (strToUint32_safe (number_mem, &number, 10 /* base */)) {
-                logD_ (_func, "is_vdat: ", is_vdat, ", number_mem: ", number_mem);
+                logD (file_iter, _func, "is_vdat: ", is_vdat, ", number_mem: ", number_mem);
                 if (is_vdat)
                     vdat_tree.add (number);
                 else
@@ -86,7 +88,7 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
     }
 
     if (vdat_tree.isEmpty() && depth < 5) {
-        logD_ (_func, "walking subdir_tree");
+        logD (file_iter, _func, "walking subdir_tree");
 
         AvlTree<unsigned>::bl_iterator iter (subdir_tree);
         while (!iter.done()) {
@@ -104,7 +106,7 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
             }
         }
     } else {
-        logD_ (_func, "walking vdat_tree");
+        logD (file_iter, _func, "walking vdat_tree");
 
         AvlTree<unsigned>::bl_iterator iter (vdat_tree);
         while (!iter.done()) {
@@ -121,7 +123,7 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
             cur_pos [depth] = number;
 
             StRef<String> const filename = st_makeString (parent_dir_name, "/", fmt, number);
-            logD_ (_func, "result: ", filename);
+            logD (file_iter, _func, "result: ", filename);
             return filename;
         }
     }
@@ -132,7 +134,7 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
 StRef<String>
 NvrFileIterator::getNext ()
 {
-    logD_ (_func_);
+    logD (file_iter, _func_);
 
     Ref<Vfs::VfsDirectory> const dir = vfs->openDirectory (stream_name->mem());
     if (!dir) {
@@ -140,7 +142,8 @@ NvrFileIterator::getNext ()
         return NULL;
     }
 
-    return getNext_rec (dir, stream_name->mem(), 0, true /* parent_pos_match */);
+    StRef<String> const filename = getNext_rec (dir, stream_name->mem(), 0, true /* parent_pos_match */);
+    return filename;
 }
 
 void
