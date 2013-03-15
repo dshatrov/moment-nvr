@@ -13,7 +13,7 @@ NvrCleaner::cleanupTimerTick (void * const _self)
 {
     NvrCleaner * const self = static_cast <NvrCleaner*> (_self);
 
-    logD_ (_func, "0x", fmt_hex, (UintPtr) self);
+//    logD_ (_func, "0x", fmt_hex, (UintPtr) self);
 
     NvrFileIterator file_iter;
     file_iter.init (self->vfs, self->stream_name->mem(), 0 /* start_unixtime_sec */);
@@ -25,7 +25,10 @@ NvrCleaner::cleanupTimerTick (void * const _self)
 
     for (;;) {
         StRef<String> const filename = file_iter.getNext ();
-        logD_ (_func, "iteration: ", filename);
+        if (!filename)
+            break;
+
+//        logD_ (_func, "iteration: \"", filename, "\"");
 
         StRef<String> const vdat_filename = st_makeString (filename, ".vdat");
         StRef<String> const idx_filename  = st_makeString (filename, ".idx");
