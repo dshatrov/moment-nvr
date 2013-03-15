@@ -19,9 +19,11 @@ ChannelRecorder::channelStartItem (VideoStream * const stream,
                                    void        * const _channel_entry)
 {
     ChannelEntry * const channel_entry = static_cast <ChannelEntry*> (_channel_entry);
-    logD_ (_func_);
-    if (stream_changed)
+//    logD_ (_func_);
+    if (stream_changed) {
         channel_entry->media_recorder->setVideoStream (stream);
+        channel_entry->media_recorder->startRecording ();
+    }
 }
 
 void
@@ -30,9 +32,11 @@ ChannelRecorder::channelStopItem (VideoStream * const stream,
                                   void        * const _channel_entry)
 {
     ChannelEntry * const channel_entry = static_cast <ChannelEntry*> (_channel_entry);
-    logD_ (_func_);
-    if (stream_changed)
+//    logD_ (_func_);
+    if (stream_changed) {
         channel_entry->media_recorder->setVideoStream (stream);
+        channel_entry->media_recorder->startRecording ();
+    }
 }
 
 void
@@ -40,8 +44,9 @@ ChannelRecorder::channelNewVideoStream (VideoStream * const stream,
                                         void        * const _channel_entry)
 {
     ChannelEntry * const channel_entry = static_cast <ChannelEntry*> (_channel_entry);
-    logD_ (_func_);
+//    logD_ (_func_);
     channel_entry->media_recorder->setVideoStream (stream);
+    channel_entry->media_recorder->startRecording ();
 }
 
 void
@@ -96,7 +101,7 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
                                       vfs,
                                       channel_info->channel_name,
 //                                      3600 /* max_age_sec */);
-                                      120 /* max_age_sec */);
+                                      3600 /* max_age_sec */);
 
     mutex.lock ();
 #warning TODO Deal with duplicate channel names.
