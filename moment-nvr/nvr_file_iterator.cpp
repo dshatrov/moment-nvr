@@ -40,11 +40,6 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
 
     logD (file_iter, _func, "depth: ", depth, ", parent_dir_name: ", parent_dir_name, ", target: ", target, " pp_match: ", parent_pos_match);
 
-    bool got_best_number = false;
-    bool best_is_vdat = false;
-    unsigned best_number = 0;
-    Ref<String> best_entry_name;
-
     Format fmt;
     fmt.min_digits = 2;
 
@@ -99,7 +94,9 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
             StRef<String> const dir_name = st_makeString (parent_dir_name, "/", fmt, number);
             Ref<Vfs::VfsDirectory> const dir = vfs->openDirectory (dir_name->mem());
             if (dir) {
-                if (StRef<String> const str = getNext_rec (dir, dir_name->mem(), depth + 1, (target == number && parent_pos_match))) {
+                if (StRef<String> const str =
+                            getNext_rec (dir, dir_name->mem(), depth + 1, (target == number && parent_pos_match)))
+                {
                     cur_pos [depth] = number;
                     return str;
                 }
@@ -109,14 +106,26 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
         logD (file_iter, _func, "walking vdat_tree");
 
         AvlTree<unsigned>::bl_iterator iter (vdat_tree);
+        unsigned prv_number = 0;
+        bool got_prv_number = false;
         while (!iter.done()) {
-            unsigned const number = iter.next ()->value;
+            unsigned number = iter.next ()->value;
+
+            unsigned const tmp_prv_number = prv_number;
+            unsigned const tmp_got_prv_number = got_prv_number;
+            prv_number = number;
+            got_prv_number = true;
+
             if (number < target) {
                 continue;
             } else
             if (number == target) {
                 if (got_first && parent_pos_match)
                     continue;
+            } else {
+                assert (number > target);
+                if (!got_first && parent_pos_match && tmp_got_prv_number)
+                    number = tmp_prv_number;
             }
 
             got_first = true;
