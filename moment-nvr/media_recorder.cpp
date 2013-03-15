@@ -53,8 +53,10 @@ MediaRecorder::recordMessage (VideoStream::Message * const mt_nonnull msg,
 {
     logS_ (_func, "ts ", msg->timestamp_nanosec);
 
-    if (!recording)
+    if (!recording) {
+        logS_ (_func, "not recording");
         return;
+    }
 
     Uint64 unixtime_timestamp_nanosec = prv_unixtime_timestamp_nanosec;
     if (VideoStream::msgHasTimestamp (msg, is_audio_msg)) {
@@ -301,6 +303,8 @@ MediaRecorder::openIdxFile (ConstMemory const _filename)
 mt_mutex (mutex) Result
 MediaRecorder::doStartRecording (Time const cur_unixtime_nanosec)
 {
+//    logD_ (_func, "cur_unixtime_nanosec: ", cur_unixtime_nanosec);
+
     if (recording) {
         logW_ (_func, "already recording");
         return Result::Failure;
@@ -321,8 +325,8 @@ MediaRecorder::doStartRecording (Time const cur_unixtime_nanosec)
         recording = NULL;
         return Result::Failure;
     }
-    logD_ (_func, "filename: ", filename, ", "
-           "next_unixtime_sec: ", next_unixtime_sec, ", cur unixtime: ", cur_unixtime_nanosec);
+//    logD_ (_func, "filename: ", filename, ", "
+//           "next_unixtime_sec: ", next_unixtime_sec, ", cur unixtime: ", cur_unixtime_nanosec);
     next_file_unixtime_nanosec = next_unixtime_sec * 1000000000;
 
     if (!vfs->createSubdirsForFilename (filename->mem())) {
@@ -448,6 +452,8 @@ MediaRecorder::streamClosed (void * const _stream_ticket)
         return;
     }
 
+//    logD_ (_func_);
+
     if (self->cur_stream)
         self->cur_stream->getEventInformer()->unsubscribe (self->stream_sbn);
 
@@ -463,7 +469,7 @@ MediaRecorder::streamClosed (void * const _stream_ticket)
 void
 MediaRecorder::setVideoStream (VideoStream * const stream)
 {
-    logD_ (_this_func, "stream 0x", fmt_hex, (UintPtr) stream);
+//    logD_ (_this_func, "stream 0x", fmt_hex, (UintPtr) stream);
 
     Ref<StreamTicket> const new_ticket = grab (new (std::nothrow) StreamTicket);
     new_ticket->media_recorder = this;
@@ -471,6 +477,7 @@ MediaRecorder::setVideoStream (VideoStream * const stream)
     mutex.lock ();
 
     if (cur_stream == stream) {
+        logD_ (_this_func, "same stream");
         mutex.unlock ();
         return;
     }
