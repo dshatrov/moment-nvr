@@ -4,7 +4,6 @@
 
 #include <moment/libmoment.h>
 
-#include <moment-nvr/naming_scheme.h>
 #include <moment-nvr/nvr_file_iterator.h>
 
 
@@ -20,6 +19,7 @@ private:
 
     enum SessionState {
         SessionState_FileHeader,
+        SessionState_SequenceHeaders,
         SessionState_Frame
     };
 
@@ -38,6 +38,14 @@ private:
 
         mt_mutex (session_mutex) bool started;
         mt_mutex (session_mutex) GenericInformer::SubscriptionKey stream_sbn;
+
+        mt_mutex (session_mutex) bool sequence_headers_sent;
+
+        mt_mutex (session_mutex) bool first_frame;
+        mt_mutex (session_mutex) Time first_frame_ts;
+        mt_mutex (session_mutex) Time first_frame_srv_time;
+
+        AtomicInt send_blocked;
 
         mt_mutex (session_mutex) Timers::TimerKey send_timer;
 
@@ -58,13 +66,21 @@ private:
     mt_const DataDepRef<PagePool> page_pool;
     mt_const DataDepRef<Timers> timers;
 
-    mt_const Ref<Vfs>          vfs;
-    mt_const Ref<NamingScheme> naming_scheme;
+    mt_const Ref<Vfs> vfs;
 
-    mt_mutex (Session::session_mutex) bool tryOpenNextFile (Session *session);
-    mt_mutex (Session::session_mutex) void readFileHeader  (Session *session);
-    mt_mutex (Session::session_mutex) void readFrame       (Session *session);
-    mt_mutex (Session::session_mutex) void sendMoreData    (Session *session);
+    mt_mutex (Session::session_mutex) bool tryOpenNextFile  (Session *session);
+    mt_mutex (Session::session_mutex) Result readFileHeader (Session *session);
+
+    enum ReadFrameResult
+    {
+        ReadFrameResult_Success,
+        ReadFrameResult_BurstLimit,
+        ReadFrameResult_Failure
+    };
+
+    mt_mutex (Session::session_mutex) ReadFrameResult readFrame (Session * mt_nonnull session);
+
+    mt_mutex (Session::session_mutex) void sendMoreData (Session *session);
 
     static void sendTimerTick (void *_session);
 
@@ -73,6 +89,16 @@ private:
 
     static void streamNumWatchersChanged (Count  num_watchers,
                                           void  *_session);
+  mt_iface_end
+
+    static mt_mutex (Session::session_mutex) void setSendState (Session           * mt_nonnull session,
+                                                                Sender::SendState  send_state);
+
+  mt_iface (Sender::Frontend)
+    static Sender::Frontend const sender_frontend;
+
+    static void senderStateChanged (Sender::SendState  send_state,
+                                    void              *_session);
   mt_iface_end
 
   mt_iface (MomentServer::ClientHandler)
@@ -133,8 +159,7 @@ private:
 
 public:
     void init (MomentServer * mt_nonnull moment,
-               Vfs          * mt_nonnull vfs,
-               NamingScheme * mt_nonnull naming_scheme);
+               Vfs          * mt_nonnull vfs);
 
     MediaViewer ();
 };
