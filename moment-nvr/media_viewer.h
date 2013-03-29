@@ -29,9 +29,9 @@ private:
         StateMutex session_mutex;
 
         mt_const WeakRef<MediaViewer> weak_media_viewer;
-
-        mt_const Ref<Vfs::VfsFile> vdat_file;
         mt_const Ref<VideoStream> stream;
+
+        mt_mutex (session_mutex) Ref<Vfs::VfsFile> vdat_file;
 
         mt_mutex (session_mutex) bool watching;
         mt_mutex (session_mutex) StRef<String> stream_name;

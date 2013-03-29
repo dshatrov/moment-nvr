@@ -6,6 +6,7 @@
 
 #include <moment-nvr/channel_recorder.h>
 #include <moment-nvr/media_viewer.h>
+#include <moment-nvr/get_file_session.h>
 
 
 namespace MomentNvr {
@@ -16,9 +17,13 @@ using namespace Moment;
 class MomentNvrModule : public Object
 {
 private:
+    StateMutex mutex;
+
     mt_const Ref<ChannelRecorder> channel_recorder;
     mt_const Ref<MediaViewer>     media_viewer;
     mt_const DataDepRef<PagePool> page_pool;
+
+    mt_mutex (mutex) List< Ref<GetFileSession> > get_file_sessions;
 
     void doGetFile (HttpRequest * mt_nonnull req,
                     Sender      * mt_nonnull sender,
@@ -37,7 +42,7 @@ private:
   mt_iface_end
 
 public:
-    void init (MomentServer * mt_nonnull moment);
+    mt_const void init (MomentServer * mt_nonnull moment);
 
     MomentNvrModule ();
 };

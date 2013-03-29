@@ -120,14 +120,27 @@ _return:
     return Result::Success;
 }
 
-void
+mt_const void
 MomentNvrModule::init (MomentServer * const mt_nonnull moment)
 {
+    Ref<MConfig::Config> const config = moment->getConfig ();
+
+    ConstMemory record_dir;
+    {
+        ConstMemory const opt_name = "mod_nvr/record_dir";
+        bool record_dir_is_set = false;
+        record_dir = config->getString (opt_name, &record_dir_is_set);
+        if (!record_dir_is_set) {
+            logE_ (_func, opt_name, " config option is not set, disabling mod_nvr");
+            return;
+        }
+    }
+
     page_pool = moment->getPagePool();
 
     Ref<NamingScheme> const naming_scheme =
             grab (new (std::nothrow) DefaultNamingScheme (5 /* file_duration_sec */));
-    Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs ("/home/erdizz/record" /* TODO Config parameter */);
+    Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs (record_dir);
 
     channel_recorder = grab (new (std::nothrow) ChannelRecorder);
     channel_recorder->init (moment, vfs, naming_scheme);

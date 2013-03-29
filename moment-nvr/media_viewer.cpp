@@ -520,6 +520,7 @@ MediaViewer::rtmpClientConnected (MomentServer::ClientSession * const client_ses
         sender->unlock ();
     }
 
+    // TODO isConnected - ? (use return value?)
     client_session->isConnected_subscribe (
             // IMPORTANT: Note that we use 'session' as ref_data here.
             CbDesc<MomentServer::ClientSession::Events> (&client_session_events, session, session, session));
