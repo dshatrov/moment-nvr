@@ -22,7 +22,9 @@ moment_nvr_private_headers =    \
         nvr_cleaner.h           \
         channel_recorder.h      \
         media_recorder.h        \
+        media_reader.h          \
         media_viewer.h          \
+        get_file_session.h      \
         moment_nvr_module.h
 
 moment_nvr_target_headers =
@@ -36,7 +38,9 @@ libmoment_nvr_1_0_la_SOURCES =	\
         nvr_cleaner.cpp         \
         channel_recorder.cpp    \
         media_recorder.cpp      \
+        media_reader.cpp        \
         media_viewer.cpp        \
+        get_file_session.cpp    \
         moment_nvr_module.cpp   \
         mod_nvr.cpp
 
