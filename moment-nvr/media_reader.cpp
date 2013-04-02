@@ -81,8 +81,8 @@ MediaReader::readFileHeader ()
 }
 
 mt_mutex (mutex) MediaReader::ReadFrameResult
-MediaReader::readFrame (ReadFrameCallback   const read_frame_cb,
-                        void              * const read_frame_cb_data)
+MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
+                        void                   * const read_frame_cb_data)
 {
     File * const file = vdat_file->getFile();
 
@@ -150,6 +150,7 @@ MediaReader::readFrame (ReadFrameCallback   const read_frame_cb,
 
         if (session_state == SessionState_Frame) {
             if (msg_unixtime_ts_nanosec < start_unixtime_sec * 1000000000) {
+                logD_ (_func, "skipping ts ", msg_unixtime_ts_nanosec, " < ", start_unixtime_sec * 1000000000);
                 if (!file->seek (msg_ext_len - 2, SeekOrigin::Cur)) {
                     logE_ (_func, "seek() failed: ", exc->toString());
                     if (!file->seek (fpos, SeekOrigin::Beg))
@@ -242,23 +243,22 @@ MediaReader::readFrame (ReadFrameCallback   const read_frame_cb,
                 }
 
                 if (!skip) {
-#if 0
-// CALLBACK
-                    VideoStream::AudioMessage msg;
-                    msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
+                    if (read_frame_cb && read_frame_cb->audioFrame) {
+                        VideoStream::AudioMessage msg;
+                        msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
 
-                    msg.page_pool = page_pool;
-                    msg.page_list = page_list;
-                    msg.msg_len = msg_ext_len - 2;
-                    msg.msg_offset = 0;
-                    // TODO prechunking
-                    msg.prechunk_size = 0;
+                        msg.page_pool = page_pool;
+                        msg.page_list = page_list;
+                        msg.msg_len = msg_ext_len - 2;
+                        msg.msg_offset = 0;
+                        // TODO prechunking
+                        msg.prechunk_size = 0;
 
-                    msg.codec_id = VideoStream::AudioCodecId::AAC;
-                    msg.frame_type = frame_type;
+                        msg.codec_id = VideoStream::AudioCodecId::AAC;
+                        msg.frame_type = frame_type;
 
-                    session->stream->fireAudioMessage (&msg);
-#endif
+                        read_frame_cb->audioFrame (&msg, read_frame_cb_data);
+                    }
                 }
             } else
             if (hdr [0] == 1) {
@@ -283,24 +283,23 @@ MediaReader::readFrame (ReadFrameCallback   const read_frame_cb,
                 }
 
                 if (!skip) {
-#if 0
-// CALLBACK
-                    VideoStream::VideoMessage msg;
-                    msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
+                    if (read_frame_cb && read_frame_cb->videoFrame) {
+                        VideoStream::VideoMessage msg;
+                        msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
 
-                    msg.page_pool = page_pool;
-                    msg.page_list = page_list;
-                    msg.msg_len = msg_ext_len - 2;
-                    msg.msg_offset = 0;
-                    // TODO prechunking
-                    msg.prechunk_size = 0;
+                        msg.page_pool = page_pool;
+                        msg.page_list = page_list;
+                        msg.msg_len = msg_ext_len - 2;
+                        msg.msg_offset = 0;
+                        // TODO prechunking
+                        msg.prechunk_size = 0;
 
-                    msg.codec_id = VideoStream::VideoCodecId::AVC;
-                    msg.frame_type = frame_type;
-                    msg.is_saved_frame = false;
+                        msg.codec_id = VideoStream::VideoCodecId::AVC;
+                        msg.frame_type = frame_type;
+                        msg.is_saved_frame = false;
 
-                    session->stream->fireVideoMessage (&msg);
-#endif
+                        read_frame_cb->videoFrame (&msg, read_frame_cb_data);
+                    }
                 }
             } else {
                 logE_ (_func, "unknown frame type: ", hdr [0]);
@@ -347,13 +346,12 @@ MediaReader::readFrame (ReadFrameCallback   const read_frame_cb,
 }
 
 MediaReader::ReadFrameResult
-MediaReader::readMoreData (ReadFrameCallback   const read_frame_cb,
-                           void              * const read_frame_cb_data)
+MediaReader::readMoreData (ReadFrameBackend const * const read_frame_cb,
+                           void                   * const read_frame_cb_data)
 {
     if (!vdat_file) {
         if (!tryOpenNextFile ())
-            // TODO NoDataYet return code.
-            return ReadFrameResult_Success;
+            return ReadFrameResult_NoData;
     }
 
     for (;;) {
@@ -381,10 +379,8 @@ MediaReader::readMoreData (ReadFrameCallback   const read_frame_cb,
         }
 
         if (!res) {
-            if (!tryOpenNextFile ()) {
-                // TODO NoDataYet return code.
-                break;
-            }
+            if (!tryOpenNextFile ())
+                return ReadFrameResult_NoData;
         }
     }
 
@@ -392,11 +388,37 @@ MediaReader::readMoreData (ReadFrameCallback   const read_frame_cb,
 }
 
 mt_const void
-MediaReader::init (PagePool * const mt_nonnull page_pool,
-                   Vfs      * const mt_nonnull vfs)
+MediaReader::init (PagePool    * const mt_nonnull page_pool,
+                   Vfs         * const mt_nonnull vfs,
+                   ConstMemory   const stream_name,
+                   Time          const start_unixtime_sec)
 {
     this->page_pool = page_pool;
     this->vfs = vfs;
+    this->start_unixtime_sec = start_unixtime_sec;
+
+    file_iter.init (vfs, stream_name, start_unixtime_sec);
+}
+
+mt_mutex (mutex) void
+MediaReader::releaseSequenceHeaders_unlocked ()
+{
+    if (aac_seq_hdr_sent) {
+        page_pool->msgUnref (aac_seq_hdr.first);
+        aac_seq_hdr_sent = false;
+    }
+
+    if (avc_seq_hdr_sent) {
+        page_pool->msgUnref (avc_seq_hdr.first);
+        avc_seq_hdr_sent = false;
+    }
+}
+
+MediaReader::~MediaReader ()
+{
+    mutex.lock ();
+    releaseSequenceHeaders_unlocked ();
+    mutex.unlock ();
 }
 
 }

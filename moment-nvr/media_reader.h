@@ -21,10 +21,18 @@ public:
     {
         ReadFrameResult_Success,
         ReadFrameResult_BurstLimit,
+        ReadFrameResult_NoData,
         ReadFrameResult_Failure
     };
 
-    typedef ReadFrameResult (*ReadFrameCallback) (/* TODO Send params */);
+    struct ReadFrameBackend
+    {
+        ReadFrameResult (*audioFrame) (VideoStream::AudioMessage * mt_nonnull msg,
+                                       void                      *cb_data);
+
+        ReadFrameResult (*videoFrame) (VideoStream::VideoMessage * mt_nonnull msg,
+                                       void                      *cb_data);
+    };
 
 private:
     enum SessionState {
@@ -52,25 +60,56 @@ private:
     mt_mutex (mutex) bool avc_seq_hdr_sent;
     mt_mutex (mutex) PagePool::PageListHead avc_seq_hdr;
 
+    // TODO Unused?
     AtomicInt send_blocked;
+
+    mt_mutex (mutex) void releaseSequenceHeaders_unlocked ();
+
+    mt_mutex (mutex) void reset_unlocked ()
+    {
+        session_state = SessionState_FileHeader;
+        releaseSequenceHeaders_unlocked ();
+        sequence_headers_sent = false;
+        first_frame = true;
+        file_iter.reset (start_unixtime_sec);
+        vdat_file = NULL;
+        send_blocked.set (0);
+    }
 
     mt_mutex (mutex) bool tryOpenNextFile  ();
     mt_mutex (mutex) Result readFileHeader ();
 
-    mt_mutex (mutex) ReadFrameResult readFrame (ReadFrameCallback  read_frame_cb,
-                                                void              *read_frame_cb_data);
+    mt_mutex (mutex) ReadFrameResult readFrame (ReadFrameBackend const *read_frame_cb,
+                                                void                   *read_frame_cb_data);
 
 public:
-    ReadFrameResult readMoreData (ReadFrameCallback  read_frame_cb,
-                                  void              *read_frame_cb_data);
+    ReadFrameResult readMoreData (ReadFrameBackend const *read_frame_cb,
+                                  void                   *read_frame_cb_data);
 
-    mt_const void init (PagePool * mt_nonnull page_pool,
-                        Vfs      * mt_nonnull vfs);
+    void reset ()
+    {
+        mutex.lock ();
+        reset_unlocked ();
+        mutex.unlock ();
+    }
+
+    mt_const void init (PagePool    * mt_nonnull page_pool,
+                        Vfs         * mt_nonnull vfs,
+                        ConstMemory  stream_name,
+                        Time         start_unixtime_sec);
 
     MediaReader (Object * const coderef_container)
         : DependentCodeReferenced (coderef_container),
-          page_pool (coderef_container)
+          page_pool             (coderef_container),
+          start_unixtime_sec    (0),
+          session_state         (SessionState_FileHeader),
+          sequence_headers_sent (false),
+          first_frame           (true),
+          aac_seq_hdr_sent      (false),
+          avc_seq_hdr_sent      (false)
     {}
+
+    ~MediaReader ();
 };
 
 }
