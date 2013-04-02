@@ -152,16 +152,14 @@ NvrFileIterator::getNext ()
     }
 
     StRef<String> const filename = getNext_rec (dir, stream_name->mem(), 0, true /* parent_pos_match */);
+    logD_ (_func, "filename: ", filename);
     return filename;
 }
 
 void
-NvrFileIterator::init (Vfs         * const mt_nonnull vfs,
-                       ConstMemory   const stream_name,
-                       Time          const start_unixtime_sec)
+NvrFileIterator::doSetCurPos (Time const start_unixtime_sec)
 {
-    this->vfs = vfs;
-    this->stream_name = st_grab (new (std::nothrow) String (stream_name));
+    logD_ (_func, "start_unixtime_sec: ", start_unixtime_sec);
 
     struct tm tm;
     if (!unixtimeToStructTm (start_unixtime_sec, &tm)) {
@@ -176,6 +174,24 @@ NvrFileIterator::init (Vfs         * const mt_nonnull vfs,
     cur_pos [3] = tm.tm_hour;
     cur_pos [4] = tm.tm_min;
     cur_pos [5] = tm.tm_sec;
+}
+
+void
+NvrFileIterator::reset (Time const start_unixtime_sec)
+{
+    logD_ (_func_);
+    doSetCurPos (start_unixtime_sec);
+    got_first = false;
+}
+
+void
+NvrFileIterator::init (Vfs         * const mt_nonnull vfs,
+                       ConstMemory   const stream_name,
+                       Time          const start_unixtime_sec)
+{
+    this->vfs = vfs;
+    this->stream_name = st_grab (new (std::nothrow) String (stream_name));
+    doSetCurPos (start_unixtime_sec);
 }
 
 }

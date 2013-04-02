@@ -29,8 +29,12 @@ private:
                                unsigned           depth,
                                bool               parent_pos_match);
 
+    void doSetCurPos (Time start_unixtime_sec);
+
 public:
     StRef<String> getNext ();
+
+    void reset (Time start_unixtime_sec);
 
     void init (Vfs         * mt_nonnull vfs,
                ConstMemory  stream_name,
