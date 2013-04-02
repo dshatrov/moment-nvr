@@ -17,6 +17,9 @@ private:
     mt_const StRef<String> stream_name;
     mt_const Time max_age_sec;
 
+    void doRemoveFiles (ConstMemory vdat_filename,
+                        ConstMemory idx_filename);
+
     static void cleanupTimerTick (void *_self);
 
 public:

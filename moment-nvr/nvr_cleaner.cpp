@@ -9,6 +9,16 @@ using namespace Moment;
 namespace MomentNvr {
 
 void
+NvrCleaner::doRemoveFiles (ConstMemory const vdat_filename,
+                           ConstMemory const idx_filename)
+{
+  // TODO Check return values;
+    vfs->removeFile (vdat_filename);
+    vfs->removeFile (idx_filename);
+    vfs->removeSubdirsForFilename (vdat_filename);
+}
+
+void
 NvrCleaner::cleanupTimerTick (void * const _self)
 {
     NvrCleaner * const self = static_cast <NvrCleaner*> (_self);
@@ -75,12 +85,8 @@ NvrCleaner::cleanupTimerTick (void * const _self)
         if (file_unixtime_sec < cur_unixtime_sec
             && cur_unixtime_sec - file_unixtime_sec > self->max_age_sec)
         {
-          // TODO Check return values;
             logD_ (_func, "Removing ", vdat_filename);
-
-            self->vfs->removeFile (vdat_filename->mem());
-            self->vfs->removeFile (idx_filename->mem());
-            self->vfs->removeSubdirsForFilename (vdat_filename->mem());
+            self->doRemoveFiles (vdat_filename->mem(), idx_filename->mem());
         } else {
             break;
         }
