@@ -19,11 +19,27 @@ class MomentNvrModule : public Object
 private:
     StateMutex mutex;
 
+    mt_const Ref<MomentServer>    moment;
     mt_const Ref<ChannelRecorder> channel_recorder;
     mt_const Ref<MediaViewer>     media_viewer;
     mt_const DataDepRef<PagePool> page_pool;
 
+    mt_const StRef<String> record_dir;
+
     mt_mutex (mutex) List< Ref<GetFileSession> > get_file_sessions;
+
+  mt_iface (GetFileSession::Frontend)
+    static GetFileSession::Frontend const get_file_session_frontend;
+
+    static void getFileSession_done (Result  res,
+                                     void   *_self);
+  mt_iface_end
+
+    struct Frontend {
+        void (*done) (Result  res,
+                      void   *cb_data);
+    };
+
 
     void doGetFile (HttpRequest * mt_nonnull req,
                     Sender      * mt_nonnull sender,

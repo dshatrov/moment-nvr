@@ -6,6 +6,21 @@ using namespace Moment;
 
 namespace MomentNvr {
 
+GetFileSession::Frontend const MomentNvrModule::get_file_session_frontend = {
+    getFileSession_done
+};
+
+void
+MomentNvrModule::getFileSession_done (Result   const res,
+                                      void   * const _self)
+{
+    MomentNvrModule * const self = static_cast <MomentNvrModule*> (_self);
+
+    logD_ (_func_);
+
+    // TODO Destroy GetFileSession.
+}
+
 void
 MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
                             Sender      * const mt_nonnull sender,
@@ -17,8 +32,27 @@ MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
            "start: ", start_unixtime_sec, ", "
            "duration: ", duration_sec);
 
-#warning TODO
+    Ref<GetFileSession> const get_file_session = grab (new (std::nothrow) GetFileSession);
+    {
+        Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs (record_dir->mem());
+        get_file_session->init (moment,
+                                req,
+                                sender,
+                                page_pool,
+                                vfs,
+                                stream_name,
+                                start_unixtime_sec,
+                                duration_sec,
+                                CbDesc<GetFileSession::Frontend> (&get_file_session_frontend, this, this));
+    }
 
+    mutex.lock ();
+    get_file_sessions.append (get_file_session);
+    mutex.unlock ();
+
+    get_file_session->start ();
+
+#if 0
     MOMENT_SERVER__HEADERS_DATE
 
     sender->send (page_pool,
@@ -31,6 +65,7 @@ MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
 
     if (!req->getKeepalive())
         sender->closeAfterFlush ();
+#endif
 }
 
 HttpService::HttpHandler const MomentNvrModule::http_handler =
@@ -123,24 +158,27 @@ _return:
 mt_const void
 MomentNvrModule::init (MomentServer * const mt_nonnull moment)
 {
+    this->moment = moment;
+
     Ref<MConfig::Config> const config = moment->getConfig ();
 
-    ConstMemory record_dir;
+    ConstMemory record_dir_mem;
     {
         ConstMemory const opt_name = "mod_nvr/record_dir";
         bool record_dir_is_set = false;
-        record_dir = config->getString (opt_name, &record_dir_is_set);
+        record_dir_mem = config->getString (opt_name, &record_dir_is_set);
         if (!record_dir_is_set) {
             logE_ (_func, opt_name, " config option is not set, disabling mod_nvr");
             return;
         }
     }
+    record_dir = st_grab (new (std::nothrow) String (record_dir_mem));
 
     page_pool = moment->getPagePool();
 
     Ref<NamingScheme> const naming_scheme =
             grab (new (std::nothrow) DefaultNamingScheme (5 /* file_duration_sec */));
-    Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs (record_dir);
+    Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs (record_dir_mem);
 
     channel_recorder = grab (new (std::nothrow) ChannelRecorder);
     channel_recorder->init (moment, vfs, naming_scheme);
