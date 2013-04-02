@@ -24,11 +24,17 @@ private:
         mt_const WeakRef<ChannelRecorder> weak_channel_recorder;
 
         mt_const CodeDepRef<ServerThreadContext> thread_ctx;
+        mt_const ServerThreadContext *recorder_thread_ctx;
+
         mt_const Ref<Channel> channel;
         mt_const StRef<String> channel_name;
 
-        Ref<MediaRecorder> media_recorder;
-        Ref<NvrCleaner> nvr_cleaner;
+        mt_const Ref<MediaRecorder> media_recorder;
+        mt_const Ref<NvrCleaner> nvr_cleaner;
+
+        mt_const GenericStringHash::EntryKey hash_entry_key;
+
+        mt_mutex (ChannelRecorder::mutex) bool valid;
     };
 
     mt_const Ref<MomentServer>   moment;
@@ -65,14 +71,15 @@ private:
 
     void doCreateChannel (ChannelManager::ChannelInfo * mt_nonnull channel_info);
 
-    void doDestroyChannel (ChannelEntry * mt_nonnull channel_entry);
+    mt_mutex (mutex) void doDestroyChannel (ChannelEntry * mt_nonnull channel_entry);
 
 public:
     mt_const void init (MomentServer * mt_nonnull moment,
                         Vfs          * mt_nonnull vfs,
                         NamingScheme * mt_nonnull naming_scheme);
 
-    ChannelRecorder ();
+     ChannelRecorder ();
+    ~ChannelRecorder ();
 };
 
 }

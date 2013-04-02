@@ -57,7 +57,9 @@ ChannelRecorder::channelDestroyed (void * const _channel_entry)
     if (!self)
         return;
 
+    self->mutex.lock ();
     self->doDestroyChannel (channel_entry);
+    self->mutex.unlock ();
 }
 
 ChannelManager::Events const ChannelRecorder::channel_manager_events = {
@@ -83,9 +85,18 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
     Channel * const channel = channel_info->channel;
 
     Ref<ChannelEntry> const channel_entry = grab (new (std::nothrow) ChannelEntry);
+    channel_entry->valid = true;
     channel_entry->weak_channel_recorder = this;
     // TODO release thread_ctx
     channel_entry->thread_ctx = moment->getRecorderThreadPool()->grabThreadContext (ConstMemory() /* TODO filename */);
+    if (channel_entry->thread_ctx) {
+        channel_entry->recorder_thread_ctx = channel_entry->thread_ctx;
+    } else {
+        logE_ (_func, "Couldn't get recorder thread context: ", exc->toString());
+        channel_entry->recorder_thread_ctx = NULL;
+        channel_entry->thread_ctx = moment->getServerApp()->getServerContext()->getMainThreadContext();
+    }
+
     channel_entry->channel = channel;
     channel_entry->channel_name = st_grab (new (std::nothrow) String (channel_info->channel_name));
 
@@ -106,14 +117,17 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
     mutex.lock ();
 #warning TODO Deal with duplicate channel names.
 
-    channel_hash.add (channel_info->channel_name, channel_entry);
+    channel_entry->hash_entry_key = channel_hash.add (channel_info->channel_name, channel_entry);
     mutex.unlock ();
 
     {
         channel->channelLock ();
         if (channel->isDestroyed_unlocked()) {
             channel->channelUnlock ();
+
+            mutex.lock ();
             doDestroyChannel (channel_entry);
+            mutex.unlock ();
         } else {
             channel_entry->media_recorder->setVideoStream (channel->getVideoStream_unlocked());
             channel->getEventInformer()->subscribe_unlocked (
@@ -125,10 +139,23 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
     }
 }
 
-void
+mt_mutex (mutex) void
 ChannelRecorder::doDestroyChannel (ChannelEntry * const mt_nonnull channel_entry)
 {
     logD_ (_func, "channel: ", channel_entry->channel_name);
+
+    if (!channel_entry->valid) {
+        return;
+    }
+    channel_entry->valid = false;
+
+    if (channel_entry->recorder_thread_ctx) {
+        moment->getRecorderThreadPool()->releaseThreadContext (channel_entry->recorder_thread_ctx);
+        channel_entry->recorder_thread_ctx = NULL;
+    }
+
+    channel_hash.remove (channel_entry->hash_entry_key);
+    // 'channel_entry' is not valid anymore.
 }
 
 mt_const void
@@ -165,6 +192,20 @@ ChannelRecorder::init (MomentServer * const mt_nonnull moment,
 
 ChannelRecorder::ChannelRecorder ()
 {
+}
+
+ChannelRecorder::~ChannelRecorder ()
+{
+    mutex.lock ();
+
+    ChannelHash::iterator iter (channel_hash);
+    while (!iter.done()) {
+        Ref<ChannelEntry> * const channel_entry = iter.next ();
+        doDestroyChannel (*channel_entry);
+    }
+    assert (channel_hash.isEmpty());
+
+    mutex.unlock ();
 }
 
 }
