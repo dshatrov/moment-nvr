@@ -20,6 +20,7 @@ public:
     enum ReadFrameResult
     {
         ReadFrameResult_Success,
+        ReadFrameResult_Finish,
         ReadFrameResult_BurstLimit,
         ReadFrameResult_NoData,
         ReadFrameResult_Failure
@@ -45,6 +46,8 @@ private:
     mt_const Ref<Vfs> vfs;
 
     mt_const Time start_unixtime_sec;
+    // 0 means no limit
+    mt_const Size burst_size_limit;
 
     mt_mutex (mutex) SessionState session_state;
     mt_mutex (mutex) NvrFileIterator file_iter;
@@ -96,12 +99,14 @@ public:
     mt_const void init (PagePool    * mt_nonnull page_pool,
                         Vfs         * mt_nonnull vfs,
                         ConstMemory  stream_name,
-                        Time         start_unixtime_sec);
+                        Time         start_unixtime_sec,
+                        Size         burst_size_limit);
 
     MediaReader (Object * const coderef_container)
         : DependentCodeReferenced (coderef_container),
           page_pool             (coderef_container),
           start_unixtime_sec    (0),
+          burst_size_limit      (0),
           session_state         (SessionState_FileHeader),
           sequence_headers_sent (false),
           first_frame           (true),

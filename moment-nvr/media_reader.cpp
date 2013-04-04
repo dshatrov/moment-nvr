@@ -86,9 +86,10 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 {
     File * const file = vdat_file->getFile();
 
-    // TODO Config parameters for burst limits.
-    Size const burst_size_limit = 1 << 23 /* 8 Mb */;
+#if 0
+// TIMESTAMPS
     Time const burst_high_mark = 6000000000 /* 6 sec */;
+#endif
 
     Size total_read = 0;
     for (;;) {
@@ -150,7 +151,7 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 
         if (session_state == SessionState_Frame) {
             if (msg_unixtime_ts_nanosec < start_unixtime_sec * 1000000000) {
-                logD_ (_func, "skipping ts ", msg_unixtime_ts_nanosec, " < ", start_unixtime_sec * 1000000000);
+//                logD_ (_func, "skipping ts ", msg_unixtime_ts_nanosec, " < ", start_unixtime_sec * 1000000000);
                 if (!file->seek (msg_ext_len - 2, SeekOrigin::Cur)) {
                     logE_ (_func, "seek() failed: ", exc->toString());
                     if (!file->seek (fpos, SeekOrigin::Beg))
@@ -169,6 +170,8 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 #endif
             }
         }
+
+        ReadFrameResult client_res = ReadFrameResult_Success;
 
         if (msg_ext_len <= (1 << 25 /* 32 Mb */)
             && msg_ext_len >= 2)
@@ -257,7 +260,7 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
                         msg.codec_id = VideoStream::AudioCodecId::AAC;
                         msg.frame_type = frame_type;
 
-                        read_frame_cb->audioFrame (&msg, read_frame_cb_data);
+                        client_res = read_frame_cb->audioFrame (&msg, read_frame_cb_data);
                     }
                 }
             } else
@@ -298,7 +301,7 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
                         msg.frame_type = frame_type;
                         msg.is_saved_frame = false;
 
-                        read_frame_cb->videoFrame (&msg, read_frame_cb_data);
+                        client_res = read_frame_cb->videoFrame (&msg, read_frame_cb_data);
                     }
                 }
             } else {
@@ -319,8 +322,13 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
         }
 
         total_read += msg_ext_len - 2;
-        if (total_read >= burst_size_limit)
-            return ReadFrameResult_BurstLimit;
+        if (burst_size_limit) {
+            if (total_read >= burst_size_limit)
+                return ReadFrameResult_BurstLimit;
+        }
+
+        if (client_res != ReadFrameResult_Success)
+            return client_res;
 
 #if 0
 // TIMESTAMPS
@@ -369,6 +377,9 @@ MediaReader::readMoreData (ReadFrameBackend const * const read_frame_cb,
                     logD_ (_func, "session 0x", fmt_hex, (UintPtr) this, ": burst limit");
                     return ReadFrameResult_BurstLimit;
                 } else
+                if (rf_res == ReadFrameResult_Finish) {
+                    return ReadFrameResult_Finish;
+                } else
                 if (rf_res == ReadFrameResult_Success) {
                     res = Result::Success;
                 } else {
@@ -391,11 +402,13 @@ mt_const void
 MediaReader::init (PagePool    * const mt_nonnull page_pool,
                    Vfs         * const mt_nonnull vfs,
                    ConstMemory   const stream_name,
-                   Time          const start_unixtime_sec)
+                   Time          const start_unixtime_sec,
+                   Size          const burst_size_limit)
 {
     this->page_pool = page_pool;
     this->vfs = vfs;
     this->start_unixtime_sec = start_unixtime_sec;
+    this->burst_size_limit = burst_size_limit;
 
     file_iter.init (vfs, stream_name, start_unixtime_sec);
 }
