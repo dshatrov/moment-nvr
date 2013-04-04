@@ -47,6 +47,7 @@ MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
     }
 
     mutex.lock ();
+#warning TODO GetFileSession lifetime
     get_file_sessions.append (get_file_session);
     mutex.unlock ();
 
