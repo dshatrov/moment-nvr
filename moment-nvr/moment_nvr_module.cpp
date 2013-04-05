@@ -26,7 +26,8 @@ MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
                             Sender      * const mt_nonnull sender,
                             ConstMemory   const stream_name,
                             Time          const start_unixtime_sec,
-                            Time          const duration_sec)
+                            Time          const duration_sec,
+                            bool          const download)
 {
     logD_ (_func, "stream: ", stream_name, ", "
            "start: ", start_unixtime_sec, ", "
@@ -43,6 +44,7 @@ MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
                                 stream_name,
                                 start_unixtime_sec,
                                 duration_sec,
+                                download /* octet_stream_mime */,
                                 CbDesc<GetFileSession::Frontend> (&get_file_session_frontend, this, this));
     }
 
@@ -84,7 +86,7 @@ MomentNvrModule::httpRequest (HttpRequest  * const mt_nonnull req,
 {
     MomentNvrModule * const self = static_cast <MomentNvrModule*> (_self);
 
-    logD_ (_func_);
+    logD_ (_func, req->getRequestLine());
 
     MOMENT_SERVER__HEADERS_DATE
 
@@ -102,7 +104,8 @@ MomentNvrModule::httpRequest (HttpRequest  * const mt_nonnull req,
         logA_ ("mod_nvr 200 ", req->getClientAddress(), " ", req->getRequestLine());
     } else
     if (req->getNumPathElems() >= 2
-        && equal (req->getPath (1), "file"))
+        && (equal (req->getPath (1), "file") ||
+            stringHasSuffix (req->getPath (1), ".mp4", NULL /* ret_str */)))
     {
         ConstMemory const stream_name = req->getParameter ("stream");
 
@@ -118,7 +121,8 @@ MomentNvrModule::httpRequest (HttpRequest  * const mt_nonnull req,
             goto _bad_request;
         }
 
-        self->doGetFile (req, conn_sender, stream_name, start_unixtime_sec, duration_sec);
+        bool const download = req->hasParameter ("download");
+        self->doGetFile (req, conn_sender, stream_name, start_unixtime_sec, duration_sec, download);
         return Result::Success;
     } else {
         logE_ (_func, "Unknown request: ", req->getFullPath());

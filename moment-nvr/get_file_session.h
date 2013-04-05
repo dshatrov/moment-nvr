@@ -39,6 +39,8 @@ private:
     mt_const Time start_unixtime_sec;
     mt_const Time duration_sec;
 
+    mt_const bool octet_stream_mime;
+
     mt_const bool req_is_keepalive;
     mt_const IpAddress req_client_addr;
     mt_const StRef<String> req_request_line;
@@ -112,6 +114,7 @@ public:
                         ConstMemory    const stream_name,
                         Time           const start_unixtime_sec,
                         Time           const duration_sec,
+                        bool           const octet_stream_mime,
                         CbDesc<Frontend> const &frontend);
 
      GetFileSession ();

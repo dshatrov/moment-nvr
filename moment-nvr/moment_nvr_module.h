@@ -45,7 +45,8 @@ private:
                     Sender      * mt_nonnull sender,
                     ConstMemory  stream_name,
                     Time         start_unixtime_sec,
-                    Time         duration_sec);
+                    Time         duration_sec,
+                    bool         download);
 
   mt_iface (HttpService::HttpHandler)
     static HttpService::HttpHandler const http_handler;
