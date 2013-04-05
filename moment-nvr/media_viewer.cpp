@@ -129,7 +129,7 @@ MediaViewer::readFrame (Session * const mt_nonnull session)
         }
 
         if (res != IoResult::Normal) {
-            logE_ (_func, "Could not read media header");
+//            logE_ (_func, "Could not read media header");
             if (!file->seek (fpos, SeekOrigin::Beg))
                 logE_ (_func, "seek() failed: ", exc->toString());
             return ReadFrameResult_Failure;
@@ -373,7 +373,7 @@ MediaViewer::sendMoreData (Session * const session)
             case SessionState_Frame:
                 ReadFrameResult const rf_res = readFrame (session);
                 if (rf_res == ReadFrameResult_BurstLimit) {
-                    logD_ (_func, "session 0x", fmt_hex, (UintPtr) session, ": burst limit");
+//                    logD_ (_func, "session 0x", fmt_hex, (UintPtr) session, ": burst limit");
                     return;
                 } else
                 if (rf_res == ReadFrameResult_Success) {

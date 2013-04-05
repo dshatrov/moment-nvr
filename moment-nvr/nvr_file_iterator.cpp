@@ -152,14 +152,14 @@ NvrFileIterator::getNext ()
     }
 
     StRef<String> const filename = getNext_rec (dir, stream_name->mem(), 0, true /* parent_pos_match */);
-    logD_ (_func, "filename: ", filename);
+//    logD_ (_func, "filename: ", filename);
     return filename;
 }
 
 void
 NvrFileIterator::doSetCurPos (Time const start_unixtime_sec)
 {
-    logD_ (_func, "start_unixtime_sec: ", start_unixtime_sec);
+//    logD_ (_func, "start_unixtime_sec: ", start_unixtime_sec);
 
     struct tm tm;
     if (!unixtimeToStructTm (start_unixtime_sec, &tm)) {
@@ -179,7 +179,7 @@ NvrFileIterator::doSetCurPos (Time const start_unixtime_sec)
 void
 NvrFileIterator::reset (Time const start_unixtime_sec)
 {
-    logD_ (_func_);
+    logD (file_iter, _func_);
     doSetCurPos (start_unixtime_sec);
     got_first = false;
 }

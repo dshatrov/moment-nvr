@@ -6,18 +6,20 @@ using namespace Moment;
 
 namespace MomentNvr {
 
+static LogGroup libMary_logGroup_reader ("mod_nvr.media_reader", LogLevel::I);
+
 mt_mutex (mutex) bool
 MediaReader::tryOpenNextFile ()
 {
     StRef<String> const filename = file_iter.getNext ();
     if (!filename) {
-        logD_ (_func, "filename is null");
+        logD (reader, _func, "filename is null");
         return false;
     }
 
     session_state = SessionState_FileHeader;
 
-    logD_ (_func, "filename: ", filename);
+    logD (reader, _func, "filename: ", filename);
 
     {
         StRef<String> const vdat_filename = st_makeString (filename, ".vdat");
@@ -94,7 +96,7 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
     Size total_read = 0;
     for (;;) {
         if (send_blocked.get()) {
-            logD_ (_func, "send_blocked");
+            logD (reader, _func, "send_blocked");
             return ReadFrameResult_BurstLimit;
         }
 
@@ -113,7 +115,7 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
         }
 
         if (res != IoResult::Normal) {
-            logE_ (_func, "Could not read media header");
+//            logE_ (_func, "Could not read media header");
             if (!file->seek (fpos, SeekOrigin::Beg))
                 logE_ (_func, "seek() failed: ", exc->toString());
             return ReadFrameResult_Failure;
@@ -374,7 +376,7 @@ MediaReader::readMoreData (ReadFrameBackend const * const read_frame_cb,
             case SessionState_Frame:
                 ReadFrameResult const rf_res = readFrame (read_frame_cb, read_frame_cb_data);
                 if (rf_res == ReadFrameResult_BurstLimit) {
-                    logD_ (_func, "session 0x", fmt_hex, (UintPtr) this, ": burst limit");
+                    logD (reader, _func, "session 0x", fmt_hex, (UintPtr) this, ": burst limit");
                     return ReadFrameResult_BurstLimit;
                 } else
                 if (rf_res == ReadFrameResult_Finish) {
