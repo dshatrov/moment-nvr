@@ -42,13 +42,26 @@
 
     .go-button {
         color: white;
-        background-color: #33aa33;
+        /* background-color: #33aa33; */
+        background-color: #229922;
         padding-left: 0.5em;
         padding-right: 0.5em;
     }
 
     .go-button:hover {
       cursor: pointer;
+    }
+
+    .download-button {
+        background-color: #226699;
+    }
+
+    .watch-button {
+        background-color: #4488bb;
+    }
+
+    .live-button {
+        background-color: #884466;
     }
 
     .progressbar:hover {
@@ -81,11 +94,34 @@
     var play_start_pos = 0;
     var last_time_delta = 0;
 
+    function getPosInputUnixtime ()
+    {
+        var date = new Date ($("#pos-input-year").val(),
+                             $("#pos-input-month").val() - 1,
+                             $("#pos-input-day").val(),
+                             $("#pos-input-hour").val(),
+                             $("#pos-input-minute").val(),
+                             $("#pos-input-second").val(),
+                             0);
+        var time = Math.floor (date.getTime() / 1000);
+        return time;
+    }
+
     function setCursorPosition (unixtime) {
         cursor_position_sel.html (unixtimeToDate (unixtime));
     }
 
-    function setPlayStartPosition (unixtime) {
+    function setPlayStartPosition (unixtime, set_input_pos) {
+        if (set_input_pos) {
+            var date = new Date (unixtime * 1000);
+            $("#pos-input-year").val (date.getFullYear());
+            $("#pos-input-month").val (date.getMonth() + 1);
+            $("#pos-input-day").val (date.getDate());
+            $("#pos-input-hour").val (pad2 (date.getHours()));
+            $("#pos-input-minute").val (pad2 (date.getMinutes()));
+            $("#pos-input-second").val (pad2 (date.getSeconds()));
+        }
+
         play_start_pos = unixtime;
         last_time_delta = 0;
         setPlayPosition (0);
@@ -99,13 +135,13 @@
 
         play_position_sel.html (unixtimeToDate (play_start_pos + time_delta));
         $("#mark-play")[0].style.left = Math.floor ($(window).width() / 2 + (play_start_pos - reference_pos + time_delta)) + 'px';
-/*        $("#debug").html (time_delta + ', ' + (play_start_pos - reference_pos)); */
     }
 
     $(document).ready (function() {
         cursor_position_sel = $("#cursor-position");
         play_position_sel = $("#play-position");
         var mark_cursor_sel = $("#mark-cursor")[0];
+        var mark_cursor_x = 0;
 
         $(window).resize (function () {
             doResize ();
@@ -118,51 +154,77 @@
             {},
             function (data) {
                 var unixtime = eval ('(' + data + ')');
+                var local_unixtime = Math.floor ((new Date).getTime() / 1000);
 
-                var date = new Date (unixtime * 1000);
+                /*var date = new Date (unixtime * 1000);*/
 
                 /* var unixtime = Math.floor (date.getTime() / 1000); */
                 reference_pos = unixtime;
-                setPlayStartPosition (unixtime);
+                setPlayStartPosition (unixtime, true);
 
+                /*
                 $("#pos-input-year").val (date.getFullYear());
                 $("#pos-input-month").val (date.getMonth() + 1);
                 $("#pos-input-day").val (date.getDate());
                 $("#pos-input-hour").val (pad2 (date.getHours()));
                 $("#pos-input-minute").val (pad2 (date.getMinutes()));
                 $("#pos-input-second").val (pad2 (date.getSeconds()));
+                */
 
                 $("#progressbar").click (function (e) {
                     var x = e.pageX - this.offsetLeft;
                     var y = e.pageY - this.offsetTop;
-                    var time = Math.floor (unixtime - ($(window).width() / 2 - x));
-                    setPlayStartPosition (time);
+                    var time = Math.floor (reference_pos - ($(window).width() / 2 - x));
+                    setPlayStartPosition (time, true);
                     document ["MyPlayer"].setSource ("{{MyPlayerAutoplayUri}}", "{{MyPlayerAutoplayStreamName}}?start=" + time);
                 });
 
                 $("#progressbar").mousemove (function (e) {
                     var x = e.pageX - this.offsetLeft;
                     var y = e.pageY - this.offsetTop;
-                    var time = unixtime - (Math.floor ($(window).width() / 2) - x);
+                    var time = reference_pos - (Math.floor ($(window).width() / 2) - x);
+                    mark_cursor_x = x;
                     mark_cursor_sel.style.left = x + 'px';
                     setCursorPosition (time);
                 });
 
                 $("#go-button").click (function (e) {
-                    var date = new Date ($("#pos-input-year").val(),
-                                         $("#pos-input-month").val() - 1,
-                                         $("#pos-input-day").val(),
-                                         $("#pos-input-hour").val(),
-                                         $("#pos-input-minute").val(),
-                                         $("#pos-input-second").val(),
-                                         0);
-                    var time = Math.floor (date.getTime() / 1000);
+                    var time = getPosInputUnixtime();
+                    mark_cursor_sel.style.left = (mark_cursor_x + reference_pos - time) + 'px';
                     reference_pos = time;
-                    setPlayStartPosition (time);
+                    setPlayStartPosition (time, true);
                     document ["MyPlayer"].setSource ("{{MyPlayerAutoplayUri}}", "{{MyPlayerAutoplayStreamName}}?start=" + time);
                 });
 
-                document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}");
+                function doDownload (download) {
+                    var duration = $("#download-minutes").val() * 60;
+                    if (duration == 0)
+                        duration = 60;
+                    var link =  "http://{{ThisHttpServerAddr}}/mod_nvr/file.mp4?stream=test&start="
+                                    + getPosInputUnixtime()
+                                    + "&duration=" + duration + (download ? "&download" : "");
+                    if (download)
+                        window.location.href = link;
+                    else
+                        window.open (link);
+                }
+
+                $("#download-button").click (function (e) {
+                    doDownload (true);
+                });
+
+                $("#watch-button").click (function (e) {
+                    doDownload (false);
+                });
+
+                $("#live-button").click (function (e) {
+                    var cur_local_unixtime = Math.floor ((new Date).getTime() / 1000);
+                    setPlayStartPosition (unixtime + (cur_local_unixtime - local_unixtime), false);
+                    document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}");
+                });
+
+                /* Moved to flashInitialized().
+                 * document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}"); */
 
                 setInterval (function () {
                     setPlayPosition (document["MyPlayer"].getPlayheadTime());
@@ -170,6 +232,11 @@
             }
         );
     });
+
+    function flashInitialized ()
+    {
+        document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}");
+    }
 
     function doResize () {
         $("#mark-middle")[0].style.left = Math.floor ($(window).width() / 2) + 'px';
@@ -221,11 +288,11 @@
       </div>
     </div>
     <div id="progressbar" class="progressbar" style="position: absolute; overflow: hidden; width: 100%; height: 40px; bottom: 40px; background-color: #ffffbb">
-      <div id="mark-middle" style="position: absolute; background-color: #33aa33; left: 0px; width: 2px; height: 40px">
+      <div id="mark-middle" style="position: absolute; background-color: #55aadd; left: 0px; width: 2px; height: 40px">
       </div>
       <div id="mark-cursor" style="position: absolute; background-color: #0000ff; left: 0px; width: 2px; height: 40px">
       </div>
-      <div id="mark-play" style="position: absolute; background-color: #aa3333; left: 0px; width: 2px; height: 40px">
+      <div id="mark-play" style="position: absolute; background-color: #33aa33; left: 0px; width: 2px; height: 40px">
       </div>
     </div>
     <div style="position: absolute; width: 100%; height: 40px; bottom: 0px">
@@ -274,6 +341,37 @@
                 <tr>
                   <td id="go-button" class="go-button">
                     Переход
+                  </td>
+                </tr>
+              </table>
+            </td>
+            <td style="padding-left: 15px; padding-right: 5px">
+              <table border="0" cellpadding="0" cellspacing="0" style="height: 28px">
+                <tr>
+                  <td id="download-button" class="go-button download-button">
+                    Загрузить
+                  </td>
+                </tr>
+              </table>
+            </td>
+            <td style="padding-left: 0px; padding-right: 5px">
+              <table border="0" cellpadding="0" cellspacing="0" style="height: 28px">
+                <tr>
+                  <td id="watch-button" class="go-button watch-button">
+                    <b>w</b>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            <td style="padding-right: 5px">
+              <input type="text" id="download-minutes" class="date-input" value="5"/>
+            </td>
+            <td style="color: gray; padding-right: 5px">мин.</td>
+            <td style="padding-left: 10px; padding-right: 5px">
+              <table border="0" cellpadding="0" cellspacing="0" style="height: 28px">
+                <tr>
+                  <td id="live-button" class="go-button live-button">
+                    Сейчас
                   </td>
                 </tr>
               </table>
