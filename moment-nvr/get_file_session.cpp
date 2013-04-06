@@ -20,32 +20,40 @@ GetFileSession::audioFrame (VideoStream::AudioMessage * const mt_nonnull msg,
     GetFileSession * const self = static_cast <GetFileSession*> (_self);
     assert (msg->prechunk_size == 0);
 
-    logD (getfile, _func, " ts ", msg->timestamp_nanosec, " ", msg->frame_type);
+//    logD (getfile, _func, " ts ", msg->timestamp_nanosec, " ", msg->frame_type);
 
     if (self->session_state == SessionState_Header) {
-        self->last_audio_ts_nanosec = msg->timestamp_nanosec;
-        self->got_last_audio_ts = true;
-
-        self->mp4_muxer.pass1_frame (Mp4Muxer::FrameType_Audio,
-                                     msg->timestamp_nanosec,
-                                     msg->msg_len,
-                                     false /* is_sync_sample */);
-    } else {
-        if (!self->got_last_audio_ts
-            || msg->timestamp_nanosec <= self->last_audio_ts_nanosec)
-        {
+        if (msg->timestamp_nanosec > (self->start_unixtime_sec + self->duration_sec) * 1000000000) {
             logD (getfile, _func, "Finish");
             return MediaReader::ReadFrameResult_Finish;
         }
 
-        // TODO Send audio data
-#if 0
-        self->mp4_muxer.pass2_frame (Mp4Muxer::FrameType_Audio,
-                                     msg->timestamp_nanosec,
-                                     msg->page_list.first,
-                                     msg->msg_offset,
-                                     msg->msg_len);
-#endif
+        if (msg->frame_type == VideoStream::AudioFrameType::AacSequenceHeader) {
+            self->mp4_muxer.pass1_aacSequenceHeader (msg->page_pool,
+                                                     msg->page_list.first,
+                                                     msg->msg_offset,
+                                                     msg->msg_len);
+        } else
+        if (msg->frame_type.isAudioData()) {
+            self->last_audio_ts_nanosec = msg->timestamp_nanosec;
+            self->got_last_audio_ts = true;
+
+            self->mp4_muxer.pass1_frame (Mp4Muxer::FrameType_Audio,
+                                         msg->timestamp_nanosec,
+                                         msg->msg_len,
+                                         false /* is_sync_sample */);
+
+            ++self->total_num_frames;
+        }
+    } else {
+        if (msg->frame_type.isAudioData()) {
+            if (!self->got_last_audio_ts) {
+                logD (getfile, _func, "Finish");
+                return MediaReader::ReadFrameResult_Finish;
+            }
+
+            return self->doSendFrame (msg, self->last_audio_ts_nanosec);
+        }
     }
 
     return MediaReader::ReadFrameResult_Success;
@@ -83,6 +91,8 @@ GetFileSession::videoFrame (VideoStream::VideoMessage * const mt_nonnull msg,
                                          msg->timestamp_nanosec,
                                          msg->msg_len,
                                          msg->frame_type.isKeyFrame());
+
+            ++self->total_num_frames;
         }
     } else {
         if (msg->frame_type.isVideoData()) {
@@ -91,81 +101,92 @@ GetFileSession::videoFrame (VideoStream::VideoMessage * const mt_nonnull msg,
                 return MediaReader::ReadFrameResult_Finish;
             }
 
-            Size const max_header_len = RtmpConnection::MaxHeaderLen; /* FIXME Ugly */
-            Sender::MessageEntry_Pages * const msg_pages =
-                    Sender::MessageEntry_Pages::createNew (max_header_len);
-            msg->page_pool->msgRef (msg->page_list.first);
+            return self->doSendFrame (msg, self->last_video_ts_nanosec);
+        }
+    }
 
-            msg_pages->page_pool = msg->page_pool;
-            msg_pages->first_page = msg->page_list.first;
-            msg_pages->msg_offset = msg->msg_offset;
-            msg_pages->header_len = 0;
+    return MediaReader::ReadFrameResult_Success;
+}
 
-            bool burst_limit = false;
-            bool sender_limit = false;
+mt_sync_domain (readTask) MediaReader::ReadFrameResult
+GetFileSession::doSendFrame (VideoStream::Message * const mt_nonnull msg,
+                             Time                   const last_ts_nanosec)
+{
+    Size const max_header_len = RtmpConnection::MaxHeaderLen; /* FIXME Ugly */
+    Sender::MessageEntry_Pages * const msg_pages =
+            Sender::MessageEntry_Pages::createNew (max_header_len);
+    msg->page_pool->msgRef (msg->page_list.first);
 
-            self->sender->lock ();
-            self->sender->sendMessage_unlocked (msg_pages, true /* do_flush */);
+    msg_pages->page_pool = msg->page_pool;
+    msg_pages->first_page = msg->page_list.first;
+    msg_pages->msg_offset = msg->msg_offset;
+    msg_pages->header_len = 0;
+
+    bool burst_limit = false;
+    bool sender_limit = false;
+
+    sender->lock ();
+    sender->sendMessage_unlocked (msg_pages, true /* do_flush */);
+    {
+        Sender::SendState const send_state = sender->getSendState_unlocked();
+        if (send_state != Sender::SendState::ConnectionReady &&
+            send_state != Sender::SendState::ConnectionOverloaded)
+        {
+            logD (getfile, _func, "Connection overloaded: ", (unsigned) send_state);
+
+            if (bps_limit_timer) {
+                thread_ctx->getTimers()->deleteTimer (bps_limit_timer);
+                bps_limit_timer = NULL;
+            }
+
+            burst_limit = true;
+            sender_limit = true;
+        }
+    }
+    sender->unlock ();
+
+    bytes_transferred += msg->msg_len;
+
+//    if (msg->timestamp_nanosec >= last_ts_nanosec) {
+    ++pass2_num_frames;
+    if (pass2_num_frames >= total_num_frames) {
+        logD (getfile, _func, "Finish");
+        return MediaReader::ReadFrameResult_Finish;
+    }
+
+    if (!burst_limit) {
+        if (first_data_read) {
+            if (first_burst_size
+                && bytes_transferred >= first_burst_size)
             {
-                Sender::SendState const send_state = self->sender->getSendState_unlocked();
-                if (send_state != Sender::SendState::ConnectionReady &&
-                    send_state != Sender::SendState::ConnectionOverloaded)
-                {
-                    logD (getfile, _func, "Connection overloaded: ", (unsigned) send_state);
-
-                    if (self->bps_limit_timer) {
-                        self->thread_ctx->getTimers()->deleteTimer (self->bps_limit_timer);
-                        self->bps_limit_timer = NULL;
-                    }
-
-                    burst_limit = true;
-                    sender_limit = true;
-                }
+                logD (getfile, _func, "first_burst_size limit");
+                burst_limit = true;
             }
-            self->sender->unlock ();
-
-            self->bytes_transferred += msg->msg_len;
-
-            if (msg->timestamp_nanosec >= self->last_video_ts_nanosec) {
-                logD (getfile, _func, "Finish");
-                return MediaReader::ReadFrameResult_Finish;
-            }
-
-            if (!burst_limit) {
-                if (self->first_data_read) {
-                    if (self->first_burst_size
-                        && self->bytes_transferred >= self->first_burst_size)
-                    {
-                        logD (getfile, _func, "first_burst_size limit");
-                        burst_limit = true;
-                    }
-                } else
-                if (self->bps_limit) {
-                    Time const cur_time_millisec = getTimeMilliseconds();
-                    if (cur_time_millisec <= self->transfer_start_time_millisec
-                        || (double) self->bytes_transferred /
-                                   ((double) (cur_time_millisec - self->transfer_start_time_millisec) / 1000.0)
-                               >= (double) self->bps_limit)
-                    {
-                        logD (getfile, _func, "bps_limit");
-                        burst_limit = true;
-                    }
-                }
-            }
-
-            if (burst_limit) {
-                if (!sender_limit) {
-                    assert (!self->bps_limit_timer);
-                    self->bps_limit_timer =
-                            self->thread_ctx->getTimers()->addTimer (
-                                    CbDesc<Timers::TimerCallback> (bpsLimitTimerTick, self, self),
-                                    1     /* time_seconds */,
-                                    false /* periodical */,
-                                    true  /* auto_delete */);
-                }
-                return MediaReader::ReadFrameResult_BurstLimit;
+        } else
+        if (bps_limit) {
+            Time const cur_time_millisec = getTimeMilliseconds();
+            if (cur_time_millisec <= transfer_start_time_millisec
+                || (double) bytes_transferred /
+                           ((double) (cur_time_millisec - transfer_start_time_millisec) / 1000.0)
+                       >= (double) bps_limit)
+            {
+                logD (getfile, _func, "bps_limit");
+                burst_limit = true;
             }
         }
+    }
+
+    if (burst_limit) {
+        if (!sender_limit) {
+            assert (!bps_limit_timer);
+            bps_limit_timer =
+                    thread_ctx->getTimers()->addTimer (
+                            CbDesc<Timers::TimerCallback> (bpsLimitTimerTick, this, this),
+                            1     /* time_seconds */,
+                            false /* periodical */,
+                            true  /* auto_delete */);
+        }
+        return MediaReader::ReadFrameResult_BurstLimit;
     }
 
     return MediaReader::ReadFrameResult_Success;
@@ -253,7 +274,6 @@ GetFileSession::readTask (void * const _self)
 
         Size const mp4_header_len = PagePool::countPageListDataLen (mp4_header.first, 0 /* msg_offset */);
         {
-            ConstMemory msg = "Requested video data not found";
             self->sender->send (self->page_pool,
                                 true /* do_flush */,
                                 // TODO No cache
@@ -405,9 +425,6 @@ GetFileSession::init (MomentServer * const mt_nonnull moment,
                       bool           const octet_stream_mime,
                       CbDesc<Frontend> const &frontend)
 {
-//    // TEST
-//    start_unixtime_sec = getUnixtime() - 31;
-
     this->moment = moment;
     this->page_pool = page_pool;
     this->sender = sender;
@@ -457,6 +474,8 @@ GetFileSession::GetFileSession ()
       last_audio_ts_nanosec (0),
       got_last_video_ts  (false),
       last_video_ts_nanosec (0),
+      total_num_frames   (0),
+      pass2_num_frames   (0),
       started            (false)
 {
     read_task.cb  = CbDesc<DeferredProcessor::TaskCallback> (readTask,  this, this);

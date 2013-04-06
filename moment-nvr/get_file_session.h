@@ -65,6 +65,9 @@ private:
     mt_sync_domain (readTask) bool got_last_video_ts;
     mt_sync_domain (readTask) Time last_video_ts_nanosec;
 
+    mt_sync_domain (readTask) Uint64 total_num_frames;
+    mt_sync_domain (readTask) Uint64 pass2_num_frames;
+
     DeferredProcessor::Task read_task;
     DeferredProcessor::Task sender_closed_task;
     DeferredProcessor::Registration deferred_reg;
@@ -84,6 +87,10 @@ private:
             MediaReader::ReadFrameResult videoFrame (VideoStream::VideoMessage * mt_nonnull msg,
                                                      void                      *_self);
   mt_iface_end
+
+    mt_sync_domain (readTask)
+            MediaReader::ReadFrameResult doSendFrame (VideoStream::Message * mt_nonnull msg,
+                                                      Time                  last_ts_nanosec);
 
     static mt_sync_domain (readTask) bool senderClosedTask (void * const _self);
 
