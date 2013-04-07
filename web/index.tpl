@@ -52,6 +52,14 @@
       cursor: pointer;
     }
 
+    .rec-button-on {
+        background-color: #cc3333;
+    }
+
+    .rec-button-off {
+        background-color: #11bb11;
+    }
+
     .download-button {
         background-color: #226699;
     }
@@ -135,6 +143,33 @@
 
         play_position_sel.html (unixtimeToDate (play_start_pos + time_delta));
         $("#mark-play")[0].style.left = Math.floor ($(window).width() / 2 + (play_start_pos - reference_pos + time_delta)) + 'px';
+    }
+
+    var recording_on = false;
+    function showRecording () {
+        if (recording_on) {
+            $("#rec-button").html ("Выключить запись");
+            $("#rec-button").attr ("class", "go-button rec-button-on");
+        } else {
+            $("#rec-button").html ("Включить запись");
+            $("#rec-button").attr ("class", "go-button rec-button-off");
+        }
+    }
+
+    function processStateReply (reply) {
+        state = $.parseJSON (reply);
+        if (state.seq != state_seq)
+            return;
+
+        recording_on = state.recording;
+        showRecording ();
+    }
+
+    var state_seq = 0;
+    function requestState () {
+        state_seq = state_seq + 1;
+        $.get ("/mod_nvr/channel_state?stream={{MyPlayerAutoplayStreamName}}&seq=" + state_seq,
+            {}, processStateReply);
     }
 
     $(document).ready (function() {
@@ -226,9 +261,27 @@
                 /* Moved to flashInitialized().
                  * document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}"); */
 
-                setInterval (function () {
-                    setPlayPosition (document["MyPlayer"].getPlayheadTime());
-                }, 1000);
+                setInterval (
+                    function () {
+                        setPlayPosition (document["MyPlayer"].getPlayheadTime());
+                    },
+                    1000);
+
+                requestState ();
+                setInterval (
+                    function () { requestState (); },
+                    1000);
+
+                $("#rec-button").click (function (e) {
+                    var was_on = recording_on;
+
+                    recording_on = !recording_on;
+                    showRecording ();
+
+                    state_seq = state_seq + 1;
+                    $.get ("/mod_nvr_admin/rec_" + (was_on ? "off" : "on") + "?stream={{MyPlayerAutoplayStreamName}}&seq=" + state_seq,
+                        {}, processStateReply);
+                });
             }
         );
     });
@@ -242,13 +295,6 @@
         $("#mark-middle")[0].style.left = Math.floor ($(window).width() / 2) + 'px';
         $("#mark-play")[0].style.left = Math.floor ($(window).width() / 2 + last_time_delta) + 'px';
     }
-
-/*
-    function debug_videoDim (w, h, s)
-    {
-        $("#debug").html (w + " x " + h + ", " + s);
-    }
-*/
   </script>
 </head>
 <body style="height: 100%; padding: 0; margin: 0">
@@ -296,11 +342,20 @@
       </div>
     </div>
     <div style="position: absolute; width: 100%; height: 40px; bottom: 0px">
-      <div style="float: left; height: 100%; padding-left: 1ex">
+      <div style="float: left; height: 100%; padding-left: 5px">
         <table border="0" cellpadding="0" cellspacing="0" style="height: 100%; margin-left: auto; margin-right: auto">
           <tr>
             <td>
               <div id="play-position" class="play-position"></div>
+            </td>
+            <td style="padding-left: 10px; padding-right: 10px">
+              <table border="0" cellpadding="0" cellspacing="0" style="height: 28px">
+                <tr>
+                  <td id="rec-button" class="go-button rec-button-off">
+                    Включить запись
+                  </td>
+                </tr>
+              </table>
             </td>
             <!--
             <td>

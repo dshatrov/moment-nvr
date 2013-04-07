@@ -6,6 +6,14 @@ using namespace Moment;
 
 namespace MomentNvr {
 
+StRef<String>
+MomentNvrModule::channelStateToJson (ChannelRecorder::ChannelState * const mt_nonnull channel_state,
+                                     ConstMemory const seq)
+{
+    return st_makeString ("{ \"seq\": \"", seq, "\", "
+                          "\"recording\": ", channel_state->recording, " }");
+}
+
 GetFileSession::Frontend const MomentNvrModule::get_file_session_frontend = {
     getFileSession_done
 };
@@ -24,12 +32,12 @@ MomentNvrModule::getFileSession_done (Result   const res,
 void
 MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
                             Sender      * const mt_nonnull sender,
-                            ConstMemory   const stream_name,
+                            ConstMemory   const channel_name,
                             Time          const start_unixtime_sec,
                             Time          const duration_sec,
                             bool          const download)
 {
-    logD_ (_func, "stream: ", stream_name, ", "
+    logD_ (_func, "channel: ", channel_name, ", "
            "start: ", start_unixtime_sec, ", "
            "duration: ", duration_sec);
 
@@ -41,7 +49,7 @@ MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
                                 sender,
                                 page_pool,
                                 vfs,
-                                stream_name,
+                                channel_name,
                                 start_unixtime_sec,
                                 duration_sec,
                                 download /* octet_stream_mime */,
@@ -54,21 +62,6 @@ MomentNvrModule::doGetFile (HttpRequest * const mt_nonnull req,
     mutex.unlock ();
 
     get_file_session->start ();
-
-#if 0
-    MOMENT_SERVER__HEADERS_DATE
-
-    sender->send (page_pool,
-                  true /* do_flush */,
-                  // TODO No cache
-                  MOMENT_SERVER__OK_HEADERS ("text/html", 0),
-                  "\r\n");
-
-    logA_ ("mod_nvr 200 ", req->getClientAddress(), " ", req->getRequestLine());
-
-    if (!req->getKeepalive())
-        sender->closeAfterFlush ();
-#endif
 }
 
 HttpService::HttpHandler const MomentNvrModule::http_handler =
@@ -104,10 +97,50 @@ MomentNvrModule::httpRequest (HttpRequest  * const mt_nonnull req,
         logA_ ("mod_nvr 200 ", req->getClientAddress(), " ", req->getRequestLine());
     } else
     if (req->getNumPathElems() >= 2
+        && equal (req->getPath (1), "channel_state"))
+    {
+        ConstMemory const channel_name = req->getParameter ("stream");
+        ConstMemory const seq = req->getParameter ("seq");
+
+        ChannelRecorder::ChannelState channel_state;
+        ChannelRecorder::ChannelResult const res =
+                self->channel_recorder->getChannelState (channel_name, &channel_state);
+        if (res == ChannelRecorder::ChannelResult_ChannelNotFound) {
+            ConstMemory const reply_body = "404 Channel Not Found (mod_nvr_admin)";
+            conn_sender->send (self->page_pool,
+                               true /* do_flush */,
+                               MOMENT_SERVER__404_HEADERS (reply_body.len()),
+                               "\r\n",
+                               reply_body);
+            logA_ ("mod_nvr_admin 404 ", req->getClientAddress(), " ", req->getRequestLine());
+            goto _return;
+        } else
+        if (res == ChannelRecorder::ChannelResult_Failure) {
+            ConstMemory const reply_body = "500 Internal Server Error (mod_nvr_admin)";
+            conn_sender->send (self->page_pool,
+                               true /* do_flush */,
+                               MOMENT_SERVER__404_HEADERS (reply_body.len()),
+                               "\r\n",
+                               reply_body);
+            logA_ ("mod_nvr_admin 500 ", req->getClientAddress(), " ", req->getRequestLine());
+            goto _return;
+        }
+        assert (res == ChannelRecorder::ChannelResult_Success);
+
+        StRef<String> const reply_body = channelStateToJson (&channel_state, seq);
+        conn_sender->send (self->page_pool,
+                           true /* do_flush */,
+                           MOMENT_SERVER__OK_HEADERS ("text/html", reply_body->len()),
+                           "\r\n",
+                           reply_body->mem());
+
+        logA_ ("mod_nvr_admin 200 ", req->getClientAddress(), " ", req->getRequestLine());
+    } else
+    if (req->getNumPathElems() >= 2
         && (equal (req->getPath (1), "file") ||
             stringHasSuffix (req->getPath (1), ".mp4", NULL /* ret_str */)))
     {
-        ConstMemory const stream_name = req->getParameter ("stream");
+        ConstMemory const channel_name = req->getParameter ("stream");
 
         Uint64 start_unixtime_sec = 0;
         if (!strToUint64_safe (req->getParameter ("start"), &start_unixtime_sec, 10 /* base */)) {
@@ -122,7 +155,7 @@ MomentNvrModule::httpRequest (HttpRequest  * const mt_nonnull req,
         }
 
         bool const download = req->hasParameter ("download");
-        self->doGetFile (req, conn_sender, stream_name, start_unixtime_sec, duration_sec, download);
+        self->doGetFile (req, conn_sender, channel_name, start_unixtime_sec, duration_sec, download);
         return Result::Success;
     } else {
         logE_ (_func, "Unknown request: ", req->getFullPath());
@@ -152,6 +185,108 @@ _bad_request:
 
 	logA_ ("lectorium 400 ", req->getClientAddress(), " ", req->getRequestLine());
     }
+
+_return:
+    if (!req->getKeepalive())
+        conn_sender->closeAfterFlush ();
+
+    return Result::Success;
+}
+
+HttpService::HttpHandler const MomentNvrModule::admin_http_handler =
+{
+    adminHttpRequest,
+    NULL /* httpMessageBody */
+};
+
+Result
+MomentNvrModule::adminHttpRequest (HttpRequest  * const mt_nonnull req,
+                                   Sender       * const mt_nonnull conn_sender,
+                                   Memory const & /* msg_body */,
+                                   void        ** const mt_nonnull /* ret_msg_data */,
+                                   void         * const _self)
+{
+    MomentNvrModule * const self = static_cast <MomentNvrModule*> (_self);
+
+    logD_ (_func, req->getRequestLine());
+
+    MOMENT_SERVER__HEADERS_DATE
+
+    if (req->getNumPathElems() >= 2
+        && (equal (req->getPath (1), "rec_on") ||
+            equal (req->getPath (1), "rec_off")))
+    {
+        ConstMemory const channel_name = req->getParameter ("stream");
+        ConstMemory const seq = req->getParameter ("seq");
+
+        ChannelRecorder::ChannelState channel_state;
+
+        bool const set_on = equal (req->getPath (1), "rec_on");
+        ChannelRecorder::ChannelResult res = self->channel_recorder->setRecording (channel_name, set_on);
+        if (res == ChannelRecorder::ChannelResult_Success)
+            res = self->channel_recorder->getChannelState (channel_name, &channel_state);
+
+        if (res == ChannelRecorder::ChannelResult_ChannelNotFound) {
+            ConstMemory const reply_body = "404 Channel Not Found (mod_nvr_admin)";
+            conn_sender->send (self->page_pool,
+                               true /* do_flush */,
+                               MOMENT_SERVER__404_HEADERS (reply_body.len()),
+                               "\r\n",
+                               reply_body);
+            logA_ ("mod_nvr_admin 404 ", req->getClientAddress(), " ", req->getRequestLine());
+            goto _return;
+        } else
+        if (res == ChannelRecorder::ChannelResult_Failure) {
+            ConstMemory const reply_body = "500 Internal Server Error (mod_nvr_admin)";
+            conn_sender->send (self->page_pool,
+                               true /* do_flush */,
+                               MOMENT_SERVER__404_HEADERS (reply_body.len()),
+                               "\r\n",
+                               reply_body);
+            logA_ ("mod_nvr_admin 500 ", req->getClientAddress(), " ", req->getRequestLine());
+            goto _return;
+        }
+        assert (res == ChannelRecorder::ChannelResult_Success);
+
+        StRef<String> const reply_body = channelStateToJson (&channel_state, seq);
+        logD_ (_func, "reply: ", reply_body);
+        conn_sender->send (self->page_pool,
+                           true /* do_flush */,
+                           MOMENT_SERVER__OK_HEADERS ("text/html", reply_body->len()),
+                           "\r\n",
+                           reply_body->mem());
+
+        logA_ ("mod_nvr_admin 200 ", req->getClientAddress(), " ", req->getRequestLine());
+    } else {
+        logE_ (_func, "Unknown request: ", req->getFullPath());
+
+        ConstMemory const reply_body = "404 Not Found (mod_nvr_admin)";
+        conn_sender->send (self->page_pool,
+                           true /* do_flush */,
+                           MOMENT_SERVER__404_HEADERS (reply_body.len()),
+                           "\r\n",
+                           reply_body);
+
+        logA_ ("mod_nvr 404 ", req->getClientAddress(), " ", req->getRequestLine());
+    }
+
+    goto _return;
+
+#if 0
+_bad_request:
+    {
+	MOMENT_SERVER__HEADERS_DATE
+	ConstMemory const reply_body = "400 Bad Request (mod_nvr)";
+	conn_sender->send (
+		self->page_pool,
+		true /* do_flush */,
+		MOMENT_SERVER__400_HEADERS (reply_body.len()),
+		"\r\n",
+		reply_body);
+
+	logA_ ("lectorium 400 ", req->getClientAddress(), " ", req->getRequestLine());
+    }
+#endif
 
 _return:
     if (!req->getKeepalive())
@@ -194,6 +329,13 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
     moment->getHttpService()->addHttpHandler (
             CbDesc<HttpService::HttpHandler> (&http_handler, this, this),
             "mod_nvr",
+            true /* preassembly */,
+            1 << 20 /* 1 Mb */ /* preassembly_limit */,
+            true /* parse_body_params */);
+
+    moment->getAdminHttpService()->addHttpHandler (
+            CbDesc<HttpService::HttpHandler> (&admin_http_handler, this, this),
+            "mod_nvr_admin",
             true /* preassembly */,
             1 << 20 /* 1 Mb */ /* preassembly_limit */,
             true /* parse_body_params */);

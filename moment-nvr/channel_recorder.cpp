@@ -158,6 +158,45 @@ ChannelRecorder::doDestroyChannel (ChannelEntry * const mt_nonnull channel_entry
     // 'channel_entry' is not valid anymore.
 }
 
+ChannelRecorder::ChannelResult
+ChannelRecorder::getChannelState (ConstMemory    const channel_name,
+                                  ChannelState * const mt_nonnull ret_state)
+{
+    mutex.lock ();
+    ChannelHash::EntryKey const channel_entry_key = channel_hash.lookup (channel_name);
+    if (!channel_entry_key) {
+        mutex.unlock ();
+        return ChannelResult_ChannelNotFound;
+    }
+    Ref<ChannelEntry> const &channel_entry = channel_entry_key.getData();
+
+    ret_state->recording = channel_entry->media_recorder->isRecording();
+
+    mutex.unlock ();
+    return ChannelResult_Success;
+}
+
+ChannelRecorder::ChannelResult
+ChannelRecorder::setRecording (ConstMemory const channel_name,
+                               bool        const set_on)
+{
+    mutex.lock ();
+    ChannelHash::EntryKey const channel_entry_key = channel_hash.lookup (channel_name);
+    if (!channel_entry_key) {
+        mutex.unlock ();
+        return ChannelResult_ChannelNotFound;
+    }
+    Ref<ChannelEntry> const &channel_entry = channel_entry_key.getData();
+
+    if (set_on)
+        channel_entry->media_recorder->startRecording ();
+    else
+        channel_entry->media_recorder->stopRecording ();
+
+    mutex.unlock ();
+    return ChannelResult_Success;
+}
+
 mt_const void
 ChannelRecorder::init (MomentServer * const mt_nonnull moment,
                        Vfs          * const mt_nonnull vfs,

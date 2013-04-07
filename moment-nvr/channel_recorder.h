@@ -18,6 +18,15 @@ class ChannelRecorder : public Object
 private:
     StateMutex mutex;
 
+public:
+    enum ChannelResult
+    {
+        ChannelResult_Success,
+        ChannelResult_Failure,
+        ChannelResult_ChannelNotFound
+    };
+
+private:
     class ChannelEntry : public Object
     {
     public:
@@ -74,6 +83,17 @@ private:
     mt_mutex (mutex) void doDestroyChannel (ChannelEntry * mt_nonnull channel_entry);
 
 public:
+    struct ChannelState
+    {
+        bool recording;
+    };
+
+    ChannelResult getChannelState (ConstMemory   channel_anme,
+                                   ChannelState * mt_nonnull ret_state);
+
+    ChannelResult setRecording (ConstMemory channel_name,
+                                bool        set_on);
+
     mt_const void init (MomentServer * mt_nonnull moment,
                         Vfs          * mt_nonnull vfs,
                         NamingScheme * mt_nonnull naming_scheme);

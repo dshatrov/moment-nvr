@@ -28,6 +28,9 @@ private:
 
     mt_mutex (mutex) List< Ref<GetFileSession> > get_file_sessions;
 
+    static StRef<String> channelStateToJson (ChannelRecorder::ChannelState * mt_nonnull channel_state,
+                                             ConstMemory seq);
+
   mt_iface (GetFileSession::Frontend)
     static GetFileSession::Frontend const get_file_session_frontend;
 
@@ -56,6 +59,16 @@ private:
                                Memory const &msg_body,
                                void        ** mt_nonnull ret_msg_data,
                                void         *_self);
+  mt_iface_end
+
+  mt_iface (HttpService::HttpHandler)
+    static HttpService::HttpHandler const admin_http_handler;
+
+    static Result adminHttpRequest (HttpRequest  * mt_nonnull req,
+                                    Sender       * mt_nonnull conn_sender,
+                                    Memory const &msg_body,
+                                    void        ** mt_nonnull ret_msg_data,
+                                    void         *_self);
   mt_iface_end
 
 public:

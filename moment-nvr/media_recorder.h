@@ -114,6 +114,8 @@ public:
     void startRecording ();
     void stopRecording  ();
 
+    bool isRecording ();
+
     void init (PagePool            * mt_nonnull page_pool,
                ServerThreadContext * mt_nonnull thread_ctx,
                Vfs                 * mt_nonnull vfs,

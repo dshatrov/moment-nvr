@@ -518,6 +518,15 @@ MediaRecorder::stopRecording ()
     mutex.unlock ();
 }
 
+bool
+MediaRecorder::isRecording ()
+{
+    mutex.lock ();
+    bool const res = (bool) recording;
+    mutex.unlock ();
+    return res;
+}
+
 void
 MediaRecorder::init (PagePool            * const page_pool,
                      ServerThreadContext * const mt_nonnull thread_ctx,
