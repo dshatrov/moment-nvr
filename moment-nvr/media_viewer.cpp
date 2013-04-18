@@ -427,8 +427,6 @@ MediaViewer::streamNumWatchersChanged (Count   const num_watchers,
     if (!self)
         return;
 
-  // TODO unsubscribe and start streaming
-
     session->session_mutex.lock ();
     if (session->started) {
         return;

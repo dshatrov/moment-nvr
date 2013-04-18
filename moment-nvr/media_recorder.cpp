@@ -135,8 +135,7 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
         idx_entry [14] = (recording->cur_data_offset >>  8) & 0xff;
         idx_entry [15] = (recording->cur_data_offset >>  0) & 0xff;
 
-        Sender::MessageEntry_Pages * const idx_msg =
-                Sender::MessageEntry_Pages::createNew (RtmpConnection::MaxHeaderLen /* FIXME Ugly */);
+        Sender::MessageEntry_Pages * const idx_msg = Sender::MessageEntry_Pages::createNew ();
         Byte * const msg_header = idx_msg->getHeaderData();
         idx_msg->page_pool  = page_pool;
         idx_msg->first_page = NULL;
@@ -146,8 +145,7 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
         recording->idx_sender.sendMessage (idx_msg, true /* do_flush */);
     }
 
-    Sender::MessageEntry_Pages * const msg_pages =
-            Sender::MessageEntry_Pages::createNew (RtmpConnection::MaxHeaderLen /* FIXME Ugly */);
+    Sender::MessageEntry_Pages * const msg_pages = Sender::MessageEntry_Pages::createNew ();
 
     if (msg->prechunk_size == 0) {
         msg_pages->page_pool  = msg->page_pool;
@@ -248,8 +246,7 @@ MediaRecorder::openVdatFile (ConstMemory const _filename,
                                      // Header data length
                                      0, 0, 0, 0 };
 
-            Sender::MessageEntry_Pages * const msg_pages =
-                    Sender::MessageEntry_Pages::createNew (RtmpConnection::MaxHeaderLen /* FIXME Ugly */);
+            Sender::MessageEntry_Pages * const msg_pages = Sender::MessageEntry_Pages::createNew ();
 
             PagePool::PageListHead page_list;
             page_pool->getFillPages (&page_list, ConstMemory::forObject (header));

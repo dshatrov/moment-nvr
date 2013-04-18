@@ -112,9 +112,7 @@ mt_sync_domain (readTask) MediaReader::ReadFrameResult
 GetFileSession::doSendFrame (VideoStream::Message * const mt_nonnull msg,
                              Time                   const last_ts_nanosec)
 {
-    Size const max_header_len = RtmpConnection::MaxHeaderLen; /* FIXME Ugly */
-    Sender::MessageEntry_Pages * const msg_pages =
-            Sender::MessageEntry_Pages::createNew (max_header_len);
+    Sender::MessageEntry_Pages * const msg_pages = Sender::MessageEntry_Pages::createNew ();
     msg->page_pool->msgRef (msg->page_list.first);
 
     msg_pages->page_pool = msg->page_pool;
@@ -291,10 +289,7 @@ GetFileSession::readTask (void * const _self)
         }
 
         {
-            Size const max_header_len = RtmpConnection::MaxHeaderLen; /* FIXME Ugly */
-            Sender::MessageEntry_Pages * const msg_pages =
-                    Sender::MessageEntry_Pages::createNew (max_header_len);
-
+            Sender::MessageEntry_Pages * const msg_pages = Sender::MessageEntry_Pages::createNew ();
             msg_pages->page_pool = self->page_pool;
             msg_pages->first_page = mp4_header.first;
             msg_pages->msg_offset = 0;
