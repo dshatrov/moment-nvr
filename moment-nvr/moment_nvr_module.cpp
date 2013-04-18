@@ -314,6 +314,17 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
     }
     record_dir = st_grab (new (std::nothrow) String (record_dir_mem));
 
+    Uint64 file_duration_sec = 3600;
+    {
+        ConstMemory const opt_name = "mod_nvr/file_duration";
+        MConfig::GetResult const res =
+                config->getUint64_default (opt_name, &file_duration_sec, file_duration_sec);
+        if (!res)
+            logE_ (_func, "Invalid value for config option ", opt_name, ": ", config->getString (opt_name));
+        else
+            logI_ (_func, opt_name, ": ", file_duration_sec);
+    }
+
     page_pool = moment->getPagePool();
 
     Ref<NamingScheme> const naming_scheme =
