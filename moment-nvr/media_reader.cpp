@@ -88,18 +88,8 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 {
     File * const file = vdat_file->getFile();
 
-#if 0
-// TIMESTAMPS
-    Time const burst_high_mark = 6000000000 /* 6 sec */;
-#endif
-
     Size total_read = 0;
     for (;;) {
-        if (send_blocked.get()) {
-            logD (reader, _func, "send_blocked");
-            return ReadFrameResult_BurstLimit;
-        }
-
         FileSize fpos = 0;
         if (!file->tell (&fpos)) {
             logE_ (_func, "tell() failed: ", exc->toString());
@@ -163,14 +153,8 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
                 continue;
             }
 
-            if (first_frame) {
+            if (first_frame)
                 first_frame = false;
-#if 0
-// TIMESTAMPS
-                session->first_frame_ts = msg_unixtime_ts_nanosec;
-                session->first_frame_srv_time = getTimeMicroseconds() * 1000;
-#endif
-            }
         }
 
         ReadFrameResult client_res = ReadFrameResult_Success;
@@ -331,25 +315,6 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 
         if (client_res != ReadFrameResult_Success)
             return client_res;
-
-#if 0
-// TIMESTAMPS
-        if (session->session_state == SessionState_Frame) {
-            if (msg_unixtime_ts_nanosec >= session->first_frame_ts) {
-                Time const srv_time = getTimeMicroseconds() * 1000;
-                if (srv_time >= session->first_frame_srv_time) {
-                    Time const ts_delta = msg_unixtime_ts_nanosec - session->first_frame_ts;
-                    Time const srv_delta = srv_time - session->first_frame_srv_time;
-
-                    if (ts_delta >= srv_delta
-                        && ts_delta - srv_delta >= burst_high_mark)
-                    {
-                        return ReadFrameResult_BurstLimit;
-                    }
-                }
-            }
-        }
-#endif
     } // for (;;)
 
     return ReadFrameResult_Success;

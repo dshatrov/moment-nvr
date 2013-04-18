@@ -4,7 +4,7 @@
 
 #include <moment/libmoment.h>
 
-#include <moment-nvr/nvr_file_iterator.h>
+#include <moment-nvr/media_reader.h>
 
 
 namespace MomentNvr {
@@ -17,12 +17,6 @@ class MediaViewer : public Object
 private:
     StateMutex mutex;
 
-    enum SessionState {
-        SessionState_FileHeader,
-        SessionState_SequenceHeaders,
-        SessionState_Frame
-    };
-
     class Session : public Object
     {
     public:
@@ -31,7 +25,7 @@ private:
         mt_const WeakRef<MediaViewer> weak_media_viewer;
         mt_const Ref<VideoStream> stream;
 
-        mt_mutex (session_mutex) Ref<Vfs::VfsFile> vdat_file;
+        MediaReader media_reader;
 
         mt_mutex (session_mutex) bool watching;
         mt_mutex (session_mutex) StRef<String> stream_name;
@@ -39,8 +33,8 @@ private:
         mt_mutex (session_mutex) bool started;
         mt_mutex (session_mutex) GenericInformer::SubscriptionKey stream_sbn;
 
-        mt_mutex (session_mutex) bool sequence_headers_sent;
-
+        // TODO Use sendMoreData as a synchronization domain
+        //      Currently, synchronization is not fully correct for Session.
         mt_mutex (session_mutex) bool first_frame;
         mt_mutex (session_mutex) Time first_frame_ts;
         mt_mutex (session_mutex) Time first_frame_srv_time;
@@ -49,18 +43,9 @@ private:
 
         mt_mutex (session_mutex) Timers::TimerKey send_timer;
 
-        mt_mutex (session_mutex) Time start_unixtime_sec;
-
-        mt_mutex (session_mutex) SessionState session_state;
-
-        mt_mutex (session_mutex) NvrFileIterator file_iter;
-        mt_mutex (session_mutex) bool file_opened;
-
-        mt_mutex (session_mutex) bool aac_seq_hdr_sent;
-        mt_mutex (session_mutex) PagePool::PageListHead aac_seq_hdr;
-
-        mt_mutex (session_mutex) bool avc_seq_hdr_sent;
-        mt_mutex (session_mutex) PagePool::PageListHead avc_seq_hdr;
+        Session ()
+            : media_reader (this /* coderef_container */)
+        {}
     };
 
     mt_const DataDepRef<PagePool> page_pool;
@@ -68,19 +53,20 @@ private:
 
     mt_const Ref<Vfs> vfs;
 
-    mt_mutex (Session::session_mutex) bool tryOpenNextFile  (Session *session);
-    mt_mutex (Session::session_mutex) Result readFileHeader (Session *session);
+    static MediaReader::ReadFrameResult endFrame (Session              * mt_nonnull session,
+                                                  VideoStream::Message * mt_nonnull msg);
 
-    enum ReadFrameResult
-    {
-        ReadFrameResult_Success,
-        ReadFrameResult_BurstLimit,
-        ReadFrameResult_Failure
-    };
+  mt_iface (MediaReader::ReadFrameBackend)
+    static MediaReader::ReadFrameBackend const read_frame_backend;
 
-    mt_mutex (Session::session_mutex) ReadFrameResult readFrame (Session * mt_nonnull session);
+    static MediaReader::ReadFrameResult audioFrame (VideoStream::AudioMessage * mt_nonnull msg,
+                                                    void                      *_session);
 
-    mt_mutex (Session::session_mutex) void sendMoreData (Session *session);
+    static MediaReader::ReadFrameResult videoFrame (VideoStream::VideoMessage * mt_nonnull msg,
+                                                    void                      *_session);
+  mt_iface_end
+
+    void sendMoreData (Session * mt_nonnull session);
 
     static void sendTimerTick (void *_session);
 

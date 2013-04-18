@@ -3,402 +3,113 @@
 #include <moment-nvr/media_viewer.h>
 
 
-/* Задачи:
-     1. Получение файла;
-     2. Воспроизведение с произвольного места внутри одного большого файла (по индексу).
- */
-
-
 using namespace M;
 using namespace Moment;
 
 namespace MomentNvr {
 
-mt_mutex (Session::session_mutex) bool
-MediaViewer::tryOpenNextFile (Session * const session)
+MediaReader::ReadFrameResult
+MediaViewer::endFrame (Session              * const mt_nonnull session,
+                       VideoStream::Message * const mt_nonnull msg)
 {
-//    logD_ (_func, "session 0x", fmt_hex, (UintPtr) session);
-
-    StRef<String> const filename = session->file_iter.getNext ();
-    if (!filename) {
-        logD_ (_func, "filename is null");
-        return false;
+    if (session->send_blocked.get()) {
+        logD_ (_func, "send_blocked");
+        return MediaReader::ReadFrameResult_BurstLimit;
     }
 
-    session->session_state = SessionState_FileHeader;
-
-    logD_ (_func, "filename: ", filename);
-
-    {
-        StRef<String> const vdat_filename = st_makeString (filename, ".vdat");
-        session->vdat_file = vfs->openFile (vdat_filename->mem(), 0 /* open_flags */, FileAccessMode::ReadOnly);
-        if (!session->vdat_file) {
-            logE_ (_func, "vfs->openFile() failed for filename ",
-                   vdat_filename, ": ", exc->toString());
-            return false;
-        }
-    }
-
-    return true;
-}
-
-mt_mutex (Session::session_mutex) Result
-MediaViewer::readFileHeader (Session * const session)
-{
-    File * const file = session->vdat_file->getFile();
-
-    FileSize fpos = 0;
-    if (!file->tell (&fpos)) {
-        logE_ (_func, "tell() failed: ", exc->toString());
-        return Result::Failure;
-    }
-
-    Byte header [20];
-    Size bytes_read = 0;
-    IoResult const res = file->readFull (Memory::forObject (header), &bytes_read);
-    if (res == IoResult::Error) {
-        logE_ (_func, "vdat file read error: ", exc->toString());
-        if (!file->seek (fpos, SeekOrigin::Beg))
-            logE_ (_func, "seek() failed: ", exc->toString());
-        return Result::Failure;
-    } else
-    if (res != IoResult::Normal) {
-        logE_ (_func, "Could not read vdat header");
-        if (!file->seek (fpos, SeekOrigin::Beg))
-            logE_ (_func, "seek() failed: ", exc->toString());
-        return Result::Failure;
-    }
-
-    if (bytes_read < sizeof (header)) {
-        if (!file->seek (fpos, SeekOrigin::Beg))
-            logE_ (_func, "seek() failed: ", exc->toString());
-        return Result::Failure;
-    }
-
-    if (!equal (ConstMemory (header, 4), "MMNT")) {
-        logE_ (_func, "Invalid vdat header: no magic bytes");
-        return Result::Failure;
-    }
-
-    // TODO Parse format version and header length.
-
-    if (!session->sequence_headers_sent && session->first_frame)
-        session->session_state = SessionState_SequenceHeaders;
-    else
-        session->session_state = SessionState_Frame;
-
-    return Result::Success;
-}
-
-mt_mutex (Session::session_mutex) MediaViewer::ReadFrameResult
-MediaViewer::readFrame (Session * const mt_nonnull session)
-{
-    File * const file = session->vdat_file->getFile();
-
-    // TODO Config parameters for burst limits.
-    Size const burst_size_limit = 1 << 23 /* 8 Mb */;
     Time const burst_high_mark = 6000000000 /* 6 sec */;
 
-#if 0
-    // DEBUG
-    if (!session->first_frame) {
-        logD_ (_func, "--- DEBUG BREAK");
-        return ReadFrameResult_BurstLimit;
+    if (session->first_frame) {
+        session->first_frame = false;
+        session->first_frame_ts = msg->timestamp_nanosec;
+        session->first_frame_srv_time = getTimeMicroseconds() * 1000;
     }
-#endif
 
-    Size total_read = 0;
-    for (;;) {
-        if (session->send_blocked.get()) {
-            logD_ (_func, "send_blocked");
-            return ReadFrameResult_BurstLimit;
-        }
+    if (msg->timestamp_nanosec >= session->first_frame_ts) {
+        Time const srv_time = getTimeMicroseconds() * 1000;
+        if (srv_time >= session->first_frame_srv_time) {
+            Time const ts_delta = msg->timestamp_nanosec - session->first_frame_ts;
+            Time const srv_delta = srv_time - session->first_frame_srv_time;
 
-        FileSize fpos = 0;
-        if (!file->tell (&fpos)) {
-            logE_ (_func, "tell() failed: ", exc->toString());
-            return ReadFrameResult_Failure;
-        }
-
-        Byte frame_header [14];
-        Size bytes_read = 0;
-        IoResult const res = file->readFull (Memory::forObject (frame_header), &bytes_read);
-        if (res == IoResult::Error) {
-            logE_ (_func, "vdat file read error: ", exc->toString());
-            return ReadFrameResult_Failure;
-        }
-
-        if (res != IoResult::Normal) {
-//            logE_ (_func, "Could not read media header");
-            if (!file->seek (fpos, SeekOrigin::Beg))
-                logE_ (_func, "seek() failed: ", exc->toString());
-            return ReadFrameResult_Failure;
-        }
-
-        if (bytes_read < sizeof (frame_header)) {
-            if (!file->seek (fpos, SeekOrigin::Beg))
-                logE_ (_func, "seek() failed: ", exc->toString());
-            return ReadFrameResult_Failure;
-        }
-
-        Time const msg_unixtime_ts_nanosec = ((Time) frame_header [0] << 56) |
-                                             ((Time) frame_header [1] << 48) |
-                                             ((Time) frame_header [2] << 40) |
-                                             ((Time) frame_header [3] << 32) |
-                                             ((Time) frame_header [4] << 24) |
-                                             ((Time) frame_header [5] << 16) |
-                                             ((Time) frame_header [6] <<  8) |
-                                             ((Time) frame_header [7] <<  0);
-//        logD_ (_func, "msg ts: ", msg_unixtime_ts_nanosec);
-
-        Size const msg_ext_len = ((Size) frame_header [ 8] << 24) |
-                                 ((Size) frame_header [ 9] << 16) |
-                                 ((Size) frame_header [10] <<  8) |
-                                 ((Size) frame_header [11] <<  0);
-//        logD_ (_func, "msg_ext_len: ", msg_ext_len);
-
-        if (session->session_state == SessionState_SequenceHeaders) {
-            if (!(   (frame_header [12] == 2 && frame_header [13] == AudioRecordFrameType::AacSequenceHeader)
-                  || (frame_header [12] == 1 && frame_header [13] == VideoRecordFrameType::AvcSequenceHeader)))
+            if (ts_delta >= srv_delta
+                && ts_delta - srv_delta >= burst_high_mark)
             {
-                session->session_state = SessionState_Frame;
+//                logD_ (_func, "BurstLimit");
+                return MediaReader::ReadFrameResult_BurstLimit;
             }
         }
+    }
 
-        if (session->session_state == SessionState_Frame) {
-            if (msg_unixtime_ts_nanosec < session->start_unixtime_sec * 1000000000) {
-                if (!file->seek (msg_ext_len - 2, SeekOrigin::Cur)) {
-                    logE_ (_func, "seek() failed: ", exc->toString());
-                    if (!file->seek (fpos, SeekOrigin::Beg))
-                        logE_ (_func, "seek() failed: ", exc->toString());
-                    return ReadFrameResult_Failure;
-                }
-                continue;
-            }
-
-            if (session->first_frame) {
-                session->first_frame = false;
-                session->first_frame_ts = msg_unixtime_ts_nanosec;
-                session->first_frame_srv_time = getTimeMicroseconds() * 1000;
-            }
-        }
-
-        if (msg_ext_len <= (1 << 25 /* 32 Mb */)
-            && msg_ext_len >= 2)
-        {
-            PagePool::PageListHead page_list;
-            Size const page_size = page_pool->getPageSize ();
-            page_pool->getPages (&page_list, msg_ext_len - 2);
-
-            PagePool::Page *cur_page = page_list.first;
-            Size msg_read = 0;
-            Size page_read = 0;
-            for (;;) {
-                if (msg_read >= msg_ext_len - 2)
-                    break;
-
-                Size nread = 0;
-                Size toread = page_size - page_read;
-                if (toread > msg_ext_len - 2 - msg_read)
-                    toread = msg_ext_len - 2 - msg_read;
-                // TODO prechunking
-                IoResult const res = file->readFull (Memory (cur_page->getData() + page_read,
-                                                             toread),
-                                                     &nread);
-                if (res == IoResult::Error) {
-                    logE_ (_func, "vdat file read error: ", exc->toString());
-                    page_pool->msgUnref (page_list.first);
-                    return ReadFrameResult_Failure;
-                }
-
-                if (res != IoResult::Normal) {
-                    logE_ (_func, "Could not read frame");
-                    if (!file->seek (fpos, SeekOrigin::Beg))
-                        logE_ (_func, "seek() failed: ", exc->toString());
-                    page_pool->msgUnref (page_list.first);
-                    return ReadFrameResult_Failure;
-                }
-
-                page_read += nread;
-                msg_read  += nread;
-
-                cur_page->data_len = page_read;
-
-                if (page_read >= page_size) {
-                    cur_page = cur_page->getNextMsgPage();
-                    page_read = 0;
-                }
-            }
-
-//            logD_ (_func, "msg_read: ", msg_read);
-
-//            Byte * const hdr = page_list.first->getData();
-            Byte * const hdr = frame_header + 12;
-            if (hdr [0] == 2) {
-              // Audio frame
-                VideoStream::AudioFrameType const frame_type = toAudioFrameType (hdr [1]);
-                logS_ (_func, "ts ", msg_unixtime_ts_nanosec, " ", frame_type);
-
-                bool skip = false;
-                if (frame_type == VideoStream::AudioFrameType::AacSequenceHeader) {
-                    if (session->aac_seq_hdr_sent
-                        && PagePool::msgEqual (session->aac_seq_hdr.first, page_list.first))
-                    {
-                        skip = true;
-                    } else {
-                        if (session->aac_seq_hdr_sent)
-                            page_pool->msgUnref (session->aac_seq_hdr.first);
-
-                        session->aac_seq_hdr_sent = true;
-                        session->aac_seq_hdr = page_list;
-                        page_pool->msgRef (session->aac_seq_hdr.first);
-                    }
-                }
-
-                if (!skip) {
-                    VideoStream::AudioMessage msg;
-                    msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
-
-                    msg.page_pool = page_pool;
-                    msg.page_list = page_list;
-                    msg.msg_len = msg_ext_len - 2;
-                    msg.msg_offset = 0;
-                    // TODO prechunking
-                    msg.prechunk_size = 0;
-
-                    msg.codec_id = VideoStream::AudioCodecId::AAC;
-                    msg.frame_type = frame_type;
-
-                    session->stream->fireAudioMessage (&msg);
-                }
-            } else
-            if (hdr [0] == 1) {
-              // Video frame
-                VideoStream::VideoFrameType const frame_type = toVideoFrameType (hdr [1]);
-                logS_ (_func, "ts ", msg_unixtime_ts_nanosec, " ", frame_type);
-
-                bool skip = false;
-                if (frame_type == VideoStream::VideoFrameType::AvcSequenceHeader) {
-                    if (session->avc_seq_hdr_sent
-                        && PagePool::msgEqual (session->avc_seq_hdr.first, page_list.first))
-                    {
-                        skip = true;
-                    } else {
-                        if (session->avc_seq_hdr_sent)
-                            page_pool->msgUnref (session->avc_seq_hdr.first);
-
-                        session->avc_seq_hdr_sent = true;
-                        session->avc_seq_hdr = page_list;
-                        page_pool->msgRef (session->avc_seq_hdr.first);
-                    }
-                }
-
-                if (!skip) {
-                    VideoStream::VideoMessage msg;
-                    msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
-
-                    msg.page_pool = page_pool;
-                    msg.page_list = page_list;
-                    msg.msg_len = msg_ext_len - 2;
-                    msg.msg_offset = 0;
-                    // TODO prechunking
-                    msg.prechunk_size = 0;
-
-                    msg.codec_id = VideoStream::VideoCodecId::AVC;
-                    msg.frame_type = frame_type;
-                    msg.is_saved_frame = false;
-
-                    session->stream->fireVideoMessage (&msg);
-                }
-            } else {
-                logE_ (_func, "unknown frame type: ", hdr [0]);
-            }
-
-            page_pool->msgUnref (page_list.first);
-
-            // TODO Handle AVC/AAC codec data
-        } else {
-            logE_ (_func, "frame is too large (", msg_ext_len, " bytes), skipping");
-            if (!file->seek (msg_ext_len - 2, SeekOrigin::Cur)) {
-                logE_ (_func, "seek() failed: ", exc->toString());
-                if (!file->seek (fpos, SeekOrigin::Beg))
-                    logE_ (_func, "seek() failed: ", exc->toString());
-                return ReadFrameResult_Failure;
-            }
-        }
-
-        total_read += msg_ext_len - 2;
-        if (total_read >= burst_size_limit)
-            return ReadFrameResult_BurstLimit;
-
-        if (session->session_state == SessionState_Frame) {
-            if (msg_unixtime_ts_nanosec >= session->first_frame_ts) {
-                Time const srv_time = getTimeMicroseconds() * 1000;
-                if (srv_time >= session->first_frame_srv_time) {
-                    Time const ts_delta = msg_unixtime_ts_nanosec - session->first_frame_ts;
-                    Time const srv_delta = srv_time - session->first_frame_srv_time;
-
-                    if (ts_delta >= srv_delta
-                        && ts_delta - srv_delta >= burst_high_mark)
-                    {
-                        return ReadFrameResult_BurstLimit;
-                    }
-                }
-            }
-        }
-    } // for (;;)
-
-    return ReadFrameResult_Success;
+    return MediaReader::ReadFrameResult_Success;
 }
 
-mt_mutex (Session::session_mutex) void
-MediaViewer::sendMoreData (Session * const session)
-{
-//    logD_ (_func, "session 0x", fmt_hex, (UintPtr) session);
+MediaReader::ReadFrameBackend const MediaViewer::read_frame_backend = {
+    audioFrame,
+    videoFrame
+};
 
-    if (!session->vdat_file) {
-        if (!tryOpenNextFile (session))
-            return;
+MediaReader::ReadFrameResult
+MediaViewer::audioFrame (VideoStream::AudioMessage * const mt_nonnull msg,
+                         void                      * const _session)
+{
+//    logD_ (_func, "ts ", msg->timestamp_nanosec, " audio ", msg->frame_type);
+
+    Session * const session = static_cast <Session*> (_session);
+    session->stream->fireAudioMessage (msg);
+
+    return endFrame (session, msg);
+}
+
+MediaReader::ReadFrameResult
+MediaViewer::videoFrame (VideoStream::VideoMessage * const mt_nonnull msg,
+                         void                      * const _session)
+{
+//    logD_ (_func, "ts ", msg->timestamp_nanosec, " video ", msg->frame_type);
+
+    Session * const session = static_cast <Session*> (_session);
+    session->stream->fireVideoMessage (msg);
+
+    return endFrame (session, msg);
+}
+
+void
+MediaViewer::sendMoreData (Session * const mt_nonnull session)
+{
+    if (session->send_blocked.get()) {
+        logD_ (_func, "send_blocked");
+        return;
     }
 
     for (;;) {
-        assert (session->vdat_file);
-
-        Result res = Result::Failure;
-        switch (session->session_state) {
-            case SessionState_FileHeader:
-                res = readFileHeader (session);
-                break;
-            case SessionState_SequenceHeaders:
-            case SessionState_Frame:
-                ReadFrameResult const rf_res = readFrame (session);
-                if (rf_res == ReadFrameResult_BurstLimit) {
-//                    logD_ (_func, "session 0x", fmt_hex, (UintPtr) session, ": burst limit");
-                    return;
-                } else
-                if (rf_res == ReadFrameResult_Success) {
-                    res = Result::Success;
-                } else {
-                    res = Result::Failure;
-                }
-
-                break;
+        MediaReader::ReadFrameResult const res =
+                session->media_reader.readMoreData (&read_frame_backend, session);
+        if (res == MediaReader::ReadFrameResult_Failure) {
+            logD_ (_func, "ReadFrameResult_Failure");
+            return;
         }
 
-        if (!res) {
-            if (!tryOpenNextFile (session))
-                break;
+        if (res == MediaReader::ReadFrameResult_BurstLimit) {
+            logD_ (_func, "ReadFrameResult_BurstLimit");
+            return;
         }
+
+        if (res == MediaReader::ReadFrameResult_NoData) {
+            logD_ (_func, "ReadFrameResult_NoData");
+            return;
+        }
+
+        if (res == MediaReader::ReadFrameResult_Finish) {
+            logD_ (_func, "ReadFrameResult_Finish");
+            return;
+        }
+
+        assert (res == MediaReader::ReadFrameResult_Success);
     }
-
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) session, ": done");
 }
 
 void
 MediaViewer::sendTimerTick (void * const _session)
 {
-//    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session);
-
     Session * const session = static_cast <Session*> (_session);
     Ref<MediaViewer> const self = session->weak_media_viewer.getRef ();
     if (!self)
@@ -487,21 +198,11 @@ MediaViewer::rtmpClientConnected (MomentServer::ClientSession * const client_ses
     session->watching = false;
     session->started = false;
 
-    session->sequence_headers_sent = false;
-
     session->first_frame = true;
     session->first_frame_ts = 0;
     session->first_frame_srv_time = 0;
 
     session->send_blocked.set (0);
-
-    session->start_unixtime_sec = 0;
-    session->session_state = SessionState_FileHeader;
-    // TODO Unused
-    session->file_opened = false;
-
-    session->aac_seq_hdr_sent = false;
-    session->avc_seq_hdr_sent = false;
 
     logD_ (_func, "session 0x", fmt_hex, (UintPtr) session.ptr(), ", "
            "app_name: ", app_name, ", full_app_name: ", full_app_name);
@@ -557,15 +258,6 @@ MediaViewer::rtmpClientDisconnected (void * const _session)
     if (session->send_timer) {
         self->timers->deleteTimer (session->send_timer);
         session->send_timer = NULL;
-    }
-
-    if (session->aac_seq_hdr_sent) {
-        session->aac_seq_hdr_sent = false;
-        self->page_pool->msgUnref (session->aac_seq_hdr.first);
-    }
-    if (session->avc_seq_hdr_sent) {
-        session->avc_seq_hdr_sent = false;
-        self->page_pool->msgUnref (session->avc_seq_hdr.first);
     }
 
     session->session_mutex.unlock ();
@@ -650,11 +342,14 @@ MediaViewer::rtmpStartWatching (ConstMemory        const stream_name,
     session->stream = stream;
     session->stream_name = st_grab (new (std::nothrow) String (stream_name));
 
-    session->start_unixtime_sec = stream_params.start_unixtime_sec;
     session->stream_sbn = stream->getEventInformer()->subscribe (
             CbDesc<VideoStream::EventHandler> (&stream_handler, session, session));
 
-    session->file_iter.init (self->vfs, session->stream_name->mem(), session->start_unixtime_sec);
+    session->media_reader.init (self->page_pool,
+                                self->vfs,
+                                stream_name,
+                                stream_params.start_unixtime_sec,
+                                0 /* 1 << 23 */ /* 8 Mb */ /* burst_size_limit */ /* TODO Config parameter */);
 
     session->session_mutex.unlock ();
 

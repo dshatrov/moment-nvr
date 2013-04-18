@@ -63,9 +63,6 @@ private:
     mt_mutex (mutex) bool avc_seq_hdr_sent;
     mt_mutex (mutex) PagePool::PageListHead avc_seq_hdr;
 
-    // TODO Unused?
-    AtomicInt send_blocked;
-
     mt_mutex (mutex) void releaseSequenceHeaders_unlocked ();
 
     mt_mutex (mutex) void reset_unlocked ()
@@ -76,7 +73,6 @@ private:
         first_frame = true;
         file_iter.reset (start_unixtime_sec);
         vdat_file = NULL;
-        send_blocked.set (0);
     }
 
     mt_mutex (mutex) bool tryOpenNextFile  ();
