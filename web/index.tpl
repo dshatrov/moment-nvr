@@ -9,12 +9,12 @@
     body {
         font-family: sans-serif;
         color: #000000;
-        background-color: #bbffbb;
+        background-color: /* #bbffbb */ #ddddff;
     }
 
     .play-position {
         font-size: larger;
-        color: #006600;
+        color: /* #006600 */ #333333;
     }
 
     .cursor-position {
