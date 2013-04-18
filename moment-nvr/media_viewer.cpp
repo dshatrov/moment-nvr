@@ -34,7 +34,7 @@ MediaViewer::endFrame (Session              * const mt_nonnull session,
             if (ts_delta >= srv_delta
                 && ts_delta - srv_delta >= burst_high_mark)
             {
-//                logD_ (_func, "BurstLimit");
+                logD_ (_func, "BurstLimit");
                 return MediaReader::ReadFrameResult_BurstLimit;
             }
         }

@@ -49,7 +49,7 @@ DefaultNamingScheme::getPath (ConstMemory   const channel_name,
         unsigned hours = file_duration_sec / hour_duration;
         unsigned const offset = (tm.tm_hour % hours) * 3600 + tm.tm_min * 60 + tm.tm_sec;
         *ret_next_unixtime_sec = unixtime_sec + (hours * 3600 - offset);
-        logD_ (_func, "tm.tm_mday: ", tm.tm_mday);
+        logD_ (_func, "tm.tm_mday: ", tm.tm_mday, ", tm.tm_hour: ", tm.tm_hour, ", hour: ", tm.tm_hour - tm.tm_hour % hours);
         res_str = st_makeString (tm.tm_year + 1900, "/", fmt, tm.tm_mon + 1, "/", tm.tm_mday, "/", tm.tm_hour - tm.tm_hour % hours);
     } else
     if (file_duration_sec >= minute_duration) {

@@ -53,15 +53,23 @@ private:
     mt_mutex (mutex) NvrFileIterator file_iter;
 
     mt_mutex (mutex) Ref<Vfs::VfsFile> vdat_file;
+    mt_mutex (mutex) StRef<String> cur_filename;
+    mt_mutex (mutex) Uint64 vdat_data_start;
+
+    mt_mutex (mutex) bool first_file;
 
     mt_mutex (mutex) bool sequence_headers_sent;
     mt_mutex (mutex) bool first_frame;
 
+    mt_mutex (mutex) bool got_aac_seq_hdr;
     mt_mutex (mutex) bool aac_seq_hdr_sent;
     mt_mutex (mutex) PagePool::PageListHead aac_seq_hdr;
+    mt_mutex (mutex) Size aac_seq_hdr_len;
 
+    mt_mutex (mutex) bool got_avc_seq_hdr;
     mt_mutex (mutex) bool avc_seq_hdr_sent;
     mt_mutex (mutex) PagePool::PageListHead avc_seq_hdr;
+    mt_mutex (mutex) Size avc_seq_hdr_len;
 
     mt_mutex (mutex) void releaseSequenceHeaders_unlocked ();
 
@@ -69,6 +77,7 @@ private:
     {
         session_state = SessionState_FileHeader;
         releaseSequenceHeaders_unlocked ();
+        first_file = true;
         sequence_headers_sent = false;
         first_frame = true;
         file_iter.reset (start_unixtime_sec);
@@ -77,6 +86,7 @@ private:
 
     mt_mutex (mutex) bool tryOpenNextFile  ();
     mt_mutex (mutex) Result readFileHeader ();
+    mt_mutex (mutex) Result readIndexAndSeek (bool * mt_nonnull ret_seeked);
 
     mt_mutex (mutex) ReadFrameResult readFrame (ReadFrameBackend const *read_frame_cb,
                                                 void                   *read_frame_cb_data);
@@ -104,10 +114,16 @@ public:
           start_unixtime_sec    (0),
           burst_size_limit      (0),
           session_state         (SessionState_FileHeader),
+          vdat_data_start       (0),
+          first_file            (true),
           sequence_headers_sent (false),
           first_frame           (true),
+          got_aac_seq_hdr       (false),
           aac_seq_hdr_sent      (false),
-          avc_seq_hdr_sent      (false)
+          aac_seq_hdr_len       (0),
+          got_avc_seq_hdr       (false),
+          avc_seq_hdr_sent      (false),
+          avc_seq_hdr_len       (0)
     {}
 
     ~MediaReader ();

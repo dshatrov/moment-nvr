@@ -29,6 +29,8 @@ MediaReader::tryOpenNextFile ()
                    vdat_filename, ": ", exc->toString());
             return false;
         }
+
+        cur_filename = filename;
     }
 
     return true;
@@ -78,6 +80,92 @@ MediaReader::readFileHeader ()
         session_state = SessionState_SequenceHeaders;
     else
         session_state = SessionState_Frame;
+
+    vdat_data_start = sizeof (header);
+
+    return Result::Success;
+}
+
+mt_mutex (mutex) Result
+MediaReader::readIndexAndSeek (bool * const mt_nonnull ret_seeked)
+{
+    *ret_seeked = false;
+
+    if (!first_file) {
+        return Result::Success;
+    }
+    first_file = false;
+
+    logD_ (_func_);
+
+    StRef<String> const idx_filename = st_makeString (cur_filename, ".idx");
+    Ref<Vfs::VfsFile> const idx_file = vfs->openFile (idx_filename->mem(),
+                                                      0 /* open_flags */,
+                                                      FileAccessMode::ReadOnly);
+    if (!idx_file) {
+        logE_ (_func, "vfs->openFile() failed for filename ",
+               idx_filename, ": ", exc->toString());
+        return Result::Failure;
+    }
+
+    Uint64 last_offset = 0;
+
+    Byte buf [1 << 16 /* 64 Kb */];
+    File * const file = idx_file->getFile();
+    for (;;) {
+        Size bytes_read = 0;
+        IoResult const res = file->readFull (Memory::forObject (buf), &bytes_read);
+        if (res == IoResult::Error) {
+            logE_ (_func, "idx file read error: ", exc->toString());
+            return Result::Failure;
+        }
+
+        if (res == IoResult::Eof) {
+            logD_ (_func, "idx eof");
+            break;
+        }
+
+        for (Size i = 0; i + 16 <= bytes_read; i += 16) {
+            Uint64 const unixtime_timestamp_nanosec = ((Uint64) buf [i + 0] << 56) |
+                                                      ((Uint64) buf [i + 1] << 48) |
+                                                      ((Uint64) buf [i + 2] << 40) |
+                                                      ((Uint64) buf [i + 3] << 32) |
+                                                      ((Uint64) buf [i + 4] << 24) |
+                                                      ((Uint64) buf [i + 5] << 16) |
+                                                      ((Uint64) buf [i + 6] <<  8) |
+                                                      ((Uint64) buf [i + 7] <<  0);
+
+            Uint64 const data_offset = ((Uint64) buf [i +  8] << 56) |
+                                       ((Uint64) buf [i +  9] << 48) |
+                                       ((Uint64) buf [i + 10] << 40) |
+                                       ((Uint64) buf [i + 11] << 32) |
+                                       ((Uint64) buf [i + 12] << 24) |
+                                       ((Uint64) buf [i + 13] << 16) |
+                                       ((Uint64) buf [i + 14] <<  8) |
+                                       ((Uint64) buf [i + 15] <<  0);
+
+            logD_ (_func, "idx ts ", unixtime_timestamp_nanosec, " offs ", data_offset);
+
+            if (unixtime_timestamp_nanosec > start_unixtime_sec * 1000000000) {
+                logD_ (_func, "idx hit");
+                break;
+            }
+
+            last_offset = data_offset;
+        }
+    }
+
+    if (last_offset > 0) {
+        *ret_seeked = true;
+
+        logD_ (_func, "seek (", last_offset, ")");
+        if (!vdat_file->getFile()->seek (vdat_data_start + last_offset, SeekOrigin::Beg)) {
+            logE_ (_func, "seek() failed: ", exc->toString());
+            return Result::Failure;
+        }
+    } else {
+        logD_ (_func, "no seek");
+    }
 
     return Result::Success;
 }
@@ -138,6 +226,12 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
                   || (frame_header [12] == 1 && frame_header [13] == VideoRecordFrameType::AvcSequenceHeader)))
             {
                 session_state = SessionState_Frame;
+                bool seeked = false;
+                if (!readIndexAndSeek (&seeked))
+                    return ReadFrameResult_Failure;
+
+                if (seeked)
+                    continue;
             }
         }
 
@@ -177,7 +271,6 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
                 Size toread = page_size - page_read;
                 if (toread > msg_ext_len - 2 - msg_read)
                     toread = msg_ext_len - 2 - msg_read;
-                // TODO prechunking
                 IoResult const res = file->readFull (Memory (cur_page->getData() + page_read,
                                                              toread),
                                                      &nread);
@@ -217,22 +310,42 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 
                 bool skip = false;
                 if (frame_type == VideoStream::AudioFrameType::AacSequenceHeader) {
-                    if (aac_seq_hdr_sent
+                    if (got_aac_seq_hdr
                         && PagePool::msgEqual (aac_seq_hdr.first, page_list.first))
                     {
                         skip = true;
                     } else {
-                        if (aac_seq_hdr_sent)
+                        if (got_aac_seq_hdr)
                             page_pool->msgUnref (aac_seq_hdr.first);
 
                         aac_seq_hdr_sent = true;
                         aac_seq_hdr = page_list;
+                        aac_seq_hdr_len = msg_ext_len - 2;
                         page_pool->msgRef (aac_seq_hdr.first);
                     }
                 }
 
-                if (!skip) {
+                if (!skip && frame_type.isAudioData()) {
                     if (read_frame_cb && read_frame_cb->audioFrame) {
+                        if (got_aac_seq_hdr && !aac_seq_hdr_sent) {
+                            aac_seq_hdr_sent = true;
+
+                            VideoStream::AudioMessage msg;
+                            msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
+
+                            msg.page_pool = page_pool;
+                            msg.page_list = aac_seq_hdr;
+                            msg.msg_len = aac_seq_hdr_len;
+                            msg.msg_offset = 0;
+                            msg.prechunk_size = 0;
+
+                            msg.codec_id = VideoStream::AudioCodecId::AAC;
+                            msg.frame_type = frame_type;
+
+                            // Note that callback's return value is not used.
+                            read_frame_cb->audioFrame (&msg, read_frame_cb_data);
+                        }
+
                         VideoStream::AudioMessage msg;
                         msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
 
@@ -240,7 +353,6 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
                         msg.page_list = page_list;
                         msg.msg_len = msg_ext_len - 2;
                         msg.msg_offset = 0;
-                        // TODO prechunking
                         msg.prechunk_size = 0;
 
                         msg.codec_id = VideoStream::AudioCodecId::AAC;
@@ -257,22 +369,43 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 
                 bool skip = false;
                 if (frame_type == VideoStream::VideoFrameType::AvcSequenceHeader) {
-                    if (avc_seq_hdr_sent
+                    if (got_avc_seq_hdr
                         && PagePool::msgEqual (avc_seq_hdr.first, page_list.first))
                     {
                         skip = true;
                     } else {
-                        if (avc_seq_hdr_sent)
+                        if (got_avc_seq_hdr)
                             page_pool->msgUnref (avc_seq_hdr.first);
 
-                        avc_seq_hdr_sent = true;
+                        got_avc_seq_hdr = true;
                         avc_seq_hdr = page_list;
+                        avc_seq_hdr_len = msg_ext_len - 2;
                         page_pool->msgRef (avc_seq_hdr.first);
                     }
                 }
 
-                if (!skip) {
+                if (!skip && frame_type.isVideoData()) {
                     if (read_frame_cb && read_frame_cb->videoFrame) {
+                        if (got_avc_seq_hdr && !avc_seq_hdr_sent) {
+                            avc_seq_hdr_sent = true;
+
+                            VideoStream::VideoMessage msg;
+                            msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
+
+                            msg.page_pool = page_pool;
+                            msg.page_list = avc_seq_hdr;
+                            msg.msg_len = avc_seq_hdr_len;
+                            msg.msg_offset = 0;
+                            msg.prechunk_size = 0;
+
+                            msg.codec_id = VideoStream::VideoCodecId::AVC;
+                            msg.frame_type = VideoStream::VideoFrameType::AvcSequenceHeader;
+                            msg.is_saved_frame = false;
+
+                            // Note that callback's return value is not used.
+                            read_frame_cb->videoFrame (&msg, read_frame_cb_data);
+                        }
+
                         VideoStream::VideoMessage msg;
                         msg.timestamp_nanosec = msg_unixtime_ts_nanosec;
 
@@ -280,7 +413,6 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
                         msg.page_list = page_list;
                         msg.msg_len = msg_ext_len - 2;
                         msg.msg_offset = 0;
-                        // TODO prechunking
                         msg.prechunk_size = 0;
 
                         msg.codec_id = VideoStream::VideoCodecId::AVC;
@@ -309,8 +441,10 @@ MediaReader::readFrame (ReadFrameBackend const * const read_frame_cb,
 
         total_read += msg_ext_len - 2;
         if (burst_size_limit) {
-            if (total_read >= burst_size_limit)
+            if (total_read >= burst_size_limit) {
+                logD_ (_func, "BurstLimit");
                 return ReadFrameResult_BurstLimit;
+            }
         }
 
         if (client_res != ReadFrameResult_Success)
@@ -341,7 +475,7 @@ MediaReader::readMoreData (ReadFrameBackend const * const read_frame_cb,
             case SessionState_Frame:
                 ReadFrameResult const rf_res = readFrame (read_frame_cb, read_frame_cb_data);
                 if (rf_res == ReadFrameResult_BurstLimit) {
-                    logD (reader, _func, "session 0x", fmt_hex, (UintPtr) this, ": burst limit");
+                    logD (reader, _func, "session 0x", fmt_hex, (UintPtr) this, ": BurstLimit");
                     return ReadFrameResult_BurstLimit;
                 } else
                 if (rf_res == ReadFrameResult_Finish) {
@@ -383,14 +517,14 @@ MediaReader::init (PagePool    * const mt_nonnull page_pool,
 mt_mutex (mutex) void
 MediaReader::releaseSequenceHeaders_unlocked ()
 {
-    if (aac_seq_hdr_sent) {
+    if (got_aac_seq_hdr) {
         page_pool->msgUnref (aac_seq_hdr.first);
-        aac_seq_hdr_sent = false;
+        got_aac_seq_hdr = false;
     }
 
-    if (avc_seq_hdr_sent) {
+    if (got_avc_seq_hdr) {
         page_pool->msgUnref (avc_seq_hdr.first);
-        avc_seq_hdr_sent = false;
+        got_avc_seq_hdr = false;
     }
 }
 

@@ -189,6 +189,8 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
 
         memcpy (msg_header + 12, header.mem(), header.len());
         msg_pages->header_len = 12 + header.len();
+
+        recording->cur_data_offset += 12 + header.len() + msg->msg_len;
     }
 
     recording->vdat_sender.sendMessage (msg_pages, true /* do_flush */);
@@ -257,6 +259,13 @@ MediaRecorder::openVdatFile (ConstMemory const _filename,
             msg_pages->msg_offset = 0;
 
             recording->vdat_sender.sendMessage (msg_pages, true /* do_flush */);
+        } else {
+            Size const file_header_len = 20 /* TODO Fixed file header length */;
+            if (file_size > file_header_len) {
+                recording->cur_data_offset = file_size - 20;
+            } else {
+              // TODO Incomplete header - rewrite.
+            }
         }
     }
 
