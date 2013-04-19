@@ -51,6 +51,8 @@ private:
     mt_const Ref<Vfs>            vfs;
     mt_const Ref<NamingScheme>   naming_scheme;
 
+    mt_const Time max_age_sec;
+
     typedef StringHash< Ref<ChannelEntry> > ChannelHash;
     mt_mutex (mutex) ChannelHash channel_hash;
 
@@ -96,7 +98,8 @@ public:
 
     mt_const void init (MomentServer * mt_nonnull moment,
                         Vfs          * mt_nonnull vfs,
-                        NamingScheme * mt_nonnull naming_scheme);
+                        NamingScheme * mt_nonnull naming_scheme,
+                        Time          max_age_sec);
 
      ChannelRecorder ();
     ~ChannelRecorder ();

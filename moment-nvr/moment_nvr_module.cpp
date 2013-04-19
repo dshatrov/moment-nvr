@@ -325,6 +325,18 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
             logI_ (_func, opt_name, ": ", file_duration_sec);
     }
 
+    Uint64 max_age_minutes = 60;
+    {
+        ConstMemory const opt_name = "mod_nvr/max_age";
+        MConfig::GetResult const res =
+                config->getUint64_default (opt_name, &max_age_minutes, max_age_minutes);
+        if (!res)
+            logE_ (_func, "Invalid value for config option ", opt_name, ": ", config->getString (opt_name));
+        else
+            logI_ (_func, opt_name, ": ", max_age_minutes);
+    }
+    Uint64 const max_age_sec = max_age_minutes * 60;
+
     page_pool = moment->getPagePool();
 
     Ref<NamingScheme> const naming_scheme =
@@ -332,7 +344,7 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
     Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs (record_dir_mem);
 
     channel_recorder = grab (new (std::nothrow) ChannelRecorder);
-    channel_recorder->init (moment, vfs, naming_scheme);
+    channel_recorder->init (moment, vfs, naming_scheme, max_age_sec);
 
     media_viewer = grab (new (std::nothrow) MediaViewer);
     media_viewer->init (moment, vfs);

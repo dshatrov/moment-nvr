@@ -40,12 +40,53 @@ private:
         {}
     };
 
+    class PrewriteQueue_name;
+
+    struct PrewriteQueueEntry : public IntrusiveListElement<PrewriteQueue_name>
+    {
+        enum EntryType {
+            EntryType_Audio,
+            EntryType_Video
+        };
+
+        EntryType entry_type;
+
+        VideoStream::AudioMessage audio_msg;
+        VideoStream::VideoMessage video_msg;
+
+        Time getTimestampNanosec () const
+        {
+            if (entry_type == EntryType_Audio)
+                return audio_msg.timestamp_nanosec;
+
+            return video_msg.timestamp_nanosec;
+        }
+
+        ~PrewriteQueueEntry ()
+        {
+            if (audio_msg.page_pool)
+                audio_msg.page_pool->msgUnref (audio_msg.page_list.first);
+
+            if (video_msg.page_pool)
+                video_msg.page_pool->msgUnref (video_msg.page_list.first);
+        }
+    };
+
+    typedef IntrusiveList< PrewriteQueueEntry,
+                           PrewriteQueue_name,
+                           DeleteAction<PrewriteQueueEntry> > PrewriteQueue;
+
     mt_const DataDepRef<PagePool> page_pool;
     mt_const DataDepRef<ServerThreadContext> thread_ctx;
     mt_const Ref<Vfs> vfs;
 
     mt_const Ref<NamingScheme> naming_scheme;
     mt_const StRef<String> channel_name;
+
+    mt_const Time  prewrite_nanosec;
+    mt_const Count prewrite_num_frames_limit;
+    mt_const Time  postwrite_nanosec;
+    mt_const Count postwrite_num_frames_limit;
 
     struct StreamTicket : public Referenced
         { MediaRecorder *media_recorder; };
@@ -66,10 +107,21 @@ private:
     mt_mutex (mutex) Time next_idx_unixtime_nanosec;
 
     mt_mutex (mutex) Ref<Recording> recording;
-
     mt_mutex (mutex) Time next_file_unixtime_nanosec;
 
+    mt_mutex (mutex) bool postwrite_active;
+    mt_mutex (mutex) bool got_postwrite_start_ts;
+    mt_mutex (mutex) Time postwrite_start_ts_nanosec;
+    mt_mutex (mutex) Count postwrite_frame_counter;
+
+    mt_mutex (mutex) PrewriteQueue prewrite_queue;
+    mt_mutex (mutex) Count prewrite_queue_size;
+
     mt_mutex (mutex) void recordStreamHeaders ();
+    mt_mutex (mutex) void recordPrewrite ();
+
+    mt_mutex (mutex) void recordAudioMessage (VideoStream::AudioMessage * mt_nonnull audio_msg);
+    mt_mutex (mutex) void recordVideoMessage (VideoStream::VideoMessage * mt_nonnull video_msg);
 
     mt_mutex (mutex) void recordMessage (VideoStream::Message * mt_nonnull msg,
                                          bool                  is_audio_msg,
@@ -120,7 +172,11 @@ public:
                ServerThreadContext * mt_nonnull thread_ctx,
                Vfs                 * mt_nonnull vfs,
                NamingScheme        * mt_nonnull naming_scheme,
-               ConstMemory          channel_name);
+               ConstMemory          channel_name,
+               Time                 prewrite_nanosec,
+               Count                prewrite_num_frames_limit,
+               Time                 postwrite_nanosec,
+               Count                postwrite_num_frames_limit);
 
      MediaRecorder ();
     ~MediaRecorder ();

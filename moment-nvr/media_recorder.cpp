@@ -47,6 +47,48 @@ MediaRecorder::recordStreamHeaders ()
 }
 
 mt_mutex (mutex) void
+MediaRecorder::recordPrewrite ()
+{
+    PrewriteQueue::iterator iter (prewrite_queue);
+    while (!iter.done()) {
+        PrewriteQueueEntry * const prewrite_entry = iter.next ();
+        switch (prewrite_entry->entry_type) {
+            case PrewriteQueueEntry::EntryType_Audio:
+                logD_ (_func, "prewrite frame ts ", prewrite_entry->audio_msg.timestamp_nanosec, " ",
+                       prewrite_entry->audio_msg.frame_type);
+                recordAudioMessage (&prewrite_entry->audio_msg);
+                break;
+            case PrewriteQueueEntry::EntryType_Video:
+                logD_ (_func, "prewrite frame ts ", prewrite_entry->video_msg.timestamp_nanosec, " ",
+                       prewrite_entry->video_msg.frame_type);
+                recordVideoMessage (&prewrite_entry->video_msg);
+                break;
+        }
+    }
+    prewrite_queue.clear ();
+}
+
+mt_mutex (mutex) void
+MediaRecorder::recordAudioMessage (VideoStream::AudioMessage * const mt_nonnull audio_msg)
+{
+    Byte header [2];
+    header [0] = (Byte) 2 /* audio_message */;
+    header [1] = (Byte) toAudioRecordFrameType (audio_msg->frame_type);
+
+    recordMessage (audio_msg, true /* is_audio_msg */, ConstMemory::forObject (header));
+}
+
+mt_mutex (mutex) void
+MediaRecorder::recordVideoMessage (VideoStream::VideoMessage * const mt_nonnull video_msg)
+{
+    Byte header [2];
+    header [0] = (Byte) 1 /* video message */;
+    header [1] = (Byte) toVideoRecordFrameType (video_msg->frame_type);
+
+    recordMessage (video_msg, false /* is_audio_msg */, ConstMemory::forObject (header));
+}
+
+mt_mutex (mutex) void
 MediaRecorder::recordMessage (VideoStream::Message * const mt_nonnull msg,
                               bool                   const is_audio_msg,
                               ConstMemory            const header)
@@ -55,6 +97,53 @@ MediaRecorder::recordMessage (VideoStream::Message * const mt_nonnull msg,
 
     if (!recording) {
         logS_ (_func, "not recording");
+
+        PrewriteQueueEntry * const prewrite_entry = new (std::nothrow) PrewriteQueueEntry;
+        assert (prewrite_entry);
+
+        if (is_audio_msg) {
+            VideoStream::AudioMessage * const audio_msg = static_cast <VideoStream::AudioMessage*> (msg);
+            prewrite_entry->audio_msg = *audio_msg;
+            prewrite_entry->entry_type = PrewriteQueueEntry::EntryType_Audio;
+        } else {
+            VideoStream::VideoMessage * const video_msg = static_cast <VideoStream::VideoMessage*> (msg);
+            prewrite_entry->video_msg = *video_msg;
+            prewrite_entry->entry_type = PrewriteQueueEntry::EntryType_Video;
+        }
+
+        if (msg->page_pool)
+            msg->page_pool->msgRef (msg->page_list.first);
+
+        prewrite_queue.append (prewrite_entry);
+        ++prewrite_queue_size;
+
+        for (;;) {
+            PrewriteQueueEntry * const first = prewrite_queue.getFirst();
+            PrewriteQueueEntry * const last  = prewrite_queue.getLast();
+
+            if (!first || !last)
+                break;
+
+            Time const first_ts = first->getTimestampNanosec();
+            Time const last_ts  = last ->getTimestampNanosec();
+
+            if (last_ts >= first_ts
+                && last_ts - first_ts > prewrite_nanosec)
+            {
+                prewrite_queue.remove (first);
+                --prewrite_queue_size;
+            } else {
+                break;
+            }
+        }
+
+        while (prewrite_queue_size > prewrite_num_frames_limit
+               && prewrite_queue.getFirst())
+        {
+            prewrite_queue.remove (prewrite_queue.getFirst());
+            --prewrite_queue_size;
+        }
+
         return;
     }
 
@@ -71,6 +160,34 @@ MediaRecorder::recordMessage (VideoStream::Message * const mt_nonnull msg,
         }
 
         prv_unixtime_timestamp_nanosec = unixtime_timestamp_nanosec;
+    }
+
+    if (postwrite_active) {
+        bool end_postwrite = false;
+
+        ++postwrite_frame_counter;
+        if (postwrite_frame_counter > postwrite_num_frames_limit) {
+            end_postwrite = true;
+        } else {
+            if (got_postwrite_start_ts) {
+                if (unixtime_timestamp_nanosec >= postwrite_start_ts_nanosec
+                    && unixtime_timestamp_nanosec - postwrite_start_ts_nanosec > postwrite_nanosec)
+                {
+                    end_postwrite = true;
+                }
+            } else {
+                postwrite_start_ts_nanosec = unixtime_timestamp_nanosec;
+                got_postwrite_start_ts = true;
+            }
+        }
+
+        if (end_postwrite) {
+            logD_ (_func, "postwrite end");
+
+            postwrite_active = false;
+            recording = NULL;
+            return;
+        }
     }
 
     logS_ (_func, "ts: ", unixtime_timestamp_nanosec, ", next: ", next_file_unixtime_nanosec);
@@ -311,6 +428,8 @@ MediaRecorder::doStartRecording (Time const cur_unixtime_nanosec)
 {
 //    logD_ (_func, "cur_unixtime_nanosec: ", cur_unixtime_nanosec);
 
+    postwrite_active = false;
+
     if (recording) {
         logW_ (_func, "already recording");
         return Result::Failure;
@@ -349,6 +468,7 @@ MediaRecorder::doStartRecording (Time const cur_unixtime_nanosec)
         goto _failure;
 
     recordStreamHeaders ();
+    recordPrewrite ();
 
     return Result::Success;
 
@@ -415,11 +535,7 @@ MediaRecorder::streamAudioMessage (VideoStream::AudioMessage * const mt_nonnull 
         return;
     }
 
-    Byte header [2];
-    header [0] = (Byte) 2 /* audio_message */;
-    header [1] = (Byte) toAudioRecordFrameType (audio_msg->frame_type);
-
-    self->recordMessage (audio_msg, true /* is_audio_msg */, ConstMemory::forObject (header));
+    self->recordAudioMessage (audio_msg);
     self->mutex.unlock ();
 }
 
@@ -436,13 +552,7 @@ MediaRecorder::streamVideoMessage (VideoStream::VideoMessage * const mt_nonnull 
         return;
     }
 
-    Byte header [2];
-    header [0] = (Byte) 1 /* video message */;
-    header [1] = (Byte) toVideoRecordFrameType (video_msg->frame_type);
-
-    logS_ (_func, video_msg->frame_type, " -> ", toVideoRecordFrameType (video_msg->frame_type));
-
-    self->recordMessage (video_msg, false /* is_audio_msg */, ConstMemory::forObject (header));
+    self->recordVideoMessage (video_msg);
     self->mutex.unlock ();
 }
 
@@ -520,7 +630,25 @@ void
 MediaRecorder::stopRecording ()
 {
     mutex.lock ();
-    recording = NULL;
+
+    if (postwrite_nanosec == 0 || postwrite_num_frames_limit == 0) {
+        recording = NULL;
+    } else
+    if (!postwrite_active) {
+        logD_ (_func, "postwrite begin");
+
+        postwrite_active = true;
+        postwrite_frame_counter = 0;
+
+        if (got_unixtime_offset) {
+            got_postwrite_start_ts = true;
+            postwrite_start_ts_nanosec = prv_unixtime_timestamp_nanosec;
+        } else {
+            got_postwrite_start_ts = false;
+            postwrite_start_ts_nanosec = 0;
+        }
+    }
+
     mutex.unlock ();
 }
 
@@ -528,7 +656,7 @@ bool
 MediaRecorder::isRecording ()
 {
     mutex.lock ();
-    bool const res = (bool) recording;
+    bool const res = (bool) recording && !postwrite_active;
     mutex.unlock ();
     return res;
 }
@@ -538,25 +666,42 @@ MediaRecorder::init (PagePool            * const page_pool,
                      ServerThreadContext * const mt_nonnull thread_ctx,
                      Vfs                 * const mt_nonnull vfs,
                      NamingScheme        * const mt_nonnull naming_scheme,
-                     ConstMemory           const channel_name)
+                     ConstMemory           const channel_name,
+                     Time                  const prewrite_nanosec,
+                     Count                 const prewrite_num_frames_limit,
+                     Time                  const postwrite_nanosec,
+                     Count                 const postwrite_num_frames_limit)
 {
     this->page_pool = page_pool;
     this->thread_ctx = thread_ctx;
     this->vfs = vfs;
     this->naming_scheme = naming_scheme;
     this->channel_name = st_grab (new (std::nothrow) String (channel_name));
+    this->prewrite_nanosec  = prewrite_nanosec;
+    this->prewrite_num_frames_limit = prewrite_num_frames_limit;
+    this->postwrite_nanosec = postwrite_nanosec;
+    this->postwrite_num_frames_limit = postwrite_num_frames_limit;
 }
 
 MediaRecorder::MediaRecorder ()
     : page_pool  (this /* coderef_container */),
       thread_ctx (this /* coderef_container */),
+      prewrite_nanosec               (0),
+      prewrite_num_frames_limit      (0),
+      postwrite_nanosec              (0),
+      postwrite_num_frames_limit     (0),
       got_unixtime_offset            (false),
       unixtime_offset_nanosec        (0),
       prv_unixtime_timestamp_nanosec (0),
       got_pending_aac_seq_hdr        (false),
       got_pending_avc_seq_hdr        (false),
       next_idx_unixtime_nanosec      (0),
-      next_file_unixtime_nanosec     (0)
+      next_file_unixtime_nanosec     (0),
+      postwrite_active               (false),
+      got_postwrite_start_ts         (false),
+      postwrite_start_ts_nanosec     (0),
+      postwrite_frame_counter        (0),
+      prewrite_queue_size            (0)
 {
 }
 

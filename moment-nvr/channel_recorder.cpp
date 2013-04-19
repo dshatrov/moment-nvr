@@ -97,6 +97,62 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
         channel_entry->thread_ctx = moment->getServerApp()->getServerContext()->getMainThreadContext();
     }
 
+    Time prewrite_sec = 5;
+    {
+        ConstMemory const opt_name = "prewrite";
+        MConfig::GetResult const res =
+                channel_info->config->getUint64_default (opt_name, &prewrite_sec, prewrite_sec);
+        if (!res) {
+            logE_ (_func, "Invalid value for config option ", opt_name, " "
+                   "(channel \"", channel_info->channel_name, "\"): ",
+                   channel_info->config->getString (opt_name));
+        } else {
+            logI_ (_func, "channel \"", channel_info->channel_name, "\", ", opt_name, ": ", prewrite_sec);
+        }
+    }
+
+    Time postwrite_sec = 5;
+    {
+        ConstMemory const opt_name = "postwrite";
+        MConfig::GetResult const res =
+                channel_info->config->getUint64_default (opt_name, &postwrite_sec, postwrite_sec);
+        if (!res) {
+            logE_ (_func, "Invalid value for config option ", opt_name, " "
+                   "(channel \"", channel_info->channel_name, "\"): ",
+                   channel_info->config->getString (opt_name));
+        } else {
+            logI_ (_func, "channel \"", channel_info->channel_name, "\", ", opt_name, ": ", postwrite_sec);
+        }
+    }
+
+    Count prewrite_num_frames = prewrite_sec * 200;
+    {
+        ConstMemory const opt_name = "prewrite_frames";
+        MConfig::GetResult const res =
+            channel_info->config->getUint64_default (opt_name, &prewrite_num_frames, prewrite_num_frames);
+        if (!res) {
+            logE_ (_func, "Invalid value for config option ", opt_name, " "
+                   "(channel \"", channel_info->channel_name, "\"): ",
+                   channel_info->config->getString (opt_name));
+        } else {
+            logI_ (_func, "channel \"", channel_info->channel_name, "\", ", opt_name, ": ", prewrite_num_frames);
+        }
+    }
+
+    Count postwrite_num_frames = postwrite_sec * 200;
+    {
+        ConstMemory const opt_name = "postwrite_frames";
+        MConfig::GetResult const res =
+            channel_info->config->getUint64_default (opt_name, &postwrite_num_frames, postwrite_num_frames);
+        if (!res) {
+            logE_ (_func, "Invalid value for config option ", opt_name, " "
+                   "(channel \"", channel_info->channel_name, "\"): ",
+                   channel_info->config->getString (opt_name));
+        } else {
+            logI_ (_func, "channel \"", channel_info->channel_name, "\", ", opt_name, ": ", postwrite_num_frames);
+        }
+    }
+
     channel_entry->channel = channel;
     channel_entry->channel_name = st_grab (new (std::nothrow) String (channel_info->channel_name));
 
@@ -105,14 +161,17 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
                                          channel_entry->thread_ctx,
                                          vfs,
                                          naming_scheme,
-                                         channel_info->channel_name);
+                                         channel_info->channel_name,
+                                         prewrite_sec * 1000000000,
+                                         prewrite_num_frames,
+                                         postwrite_sec * 1000000000,
+                                         postwrite_num_frames);
 
     channel_entry->nvr_cleaner = grab (new (std::nothrow) NvrCleaner);
     channel_entry->nvr_cleaner->init (moment->getServerApp()->getServerContext()->getMainThreadContext()->getTimers(),
                                       vfs,
                                       channel_info->channel_name,
-//                                      3600 /* max_age_sec */);
-                                      3600 /* max_age_sec */);
+                                      max_age_sec);
 
     mutex.lock ();
 #warning TODO Deal with duplicate channel names.
@@ -200,13 +259,15 @@ ChannelRecorder::setRecording (ConstMemory const channel_name,
 mt_const void
 ChannelRecorder::init (MomentServer * const mt_nonnull moment,
                        Vfs          * const mt_nonnull vfs,
-                       NamingScheme * const mt_nonnull naming_scheme)
+                       NamingScheme * const mt_nonnull naming_scheme,
+                       Time           const max_age_sec)
 {
     logD_ (_func_);
 
     this->moment = moment;
     this->vfs = vfs;
     this->naming_scheme = naming_scheme;
+    this->max_age_sec = max_age_sec;
 
     Ref<ChannelManager> const channel_manager = moment->getChannelManager();
 
@@ -230,6 +291,7 @@ ChannelRecorder::init (MomentServer * const mt_nonnull moment,
 }
 
 ChannelRecorder::ChannelRecorder ()
+    : max_age_sec (3600)
 {
 }
 
