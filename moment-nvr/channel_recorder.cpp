@@ -97,7 +97,7 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
         channel_entry->thread_ctx = moment->getServerApp()->getServerContext()->getMainThreadContext();
     }
 
-    Time prewrite_sec = 5;
+    Uint64 prewrite_sec = 5;
     {
         ConstMemory const opt_name = "prewrite";
         MConfig::GetResult const res =
@@ -111,7 +111,7 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
         }
     }
 
-    Time postwrite_sec = 5;
+    Uint64 postwrite_sec = 5;
     {
         ConstMemory const opt_name = "postwrite";
         MConfig::GetResult const res =
@@ -125,7 +125,7 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
         }
     }
 
-    Count prewrite_num_frames = prewrite_sec * 200;
+    Uint64 prewrite_num_frames = prewrite_sec * 200;
     {
         ConstMemory const opt_name = "prewrite_frames";
         MConfig::GetResult const res =
@@ -139,7 +139,7 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
         }
     }
 
-    Count postwrite_num_frames = postwrite_sec * 200;
+    Uint64 postwrite_num_frames = postwrite_sec * 200;
     {
         ConstMemory const opt_name = "postwrite_frames";
         MConfig::GetResult const res =
