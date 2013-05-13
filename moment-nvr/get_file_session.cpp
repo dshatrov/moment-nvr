@@ -135,7 +135,7 @@ GetFileSession::doSendFrame (VideoStream::Message * const mt_nonnull msg,
     msg->page_pool->msgRef (msg->page_list.first);
 
     msg_pages->page_pool = msg->page_pool;
-    msg_pages->first_page = msg->page_list.first;
+    msg_pages->setFirstPage (msg->page_list.first);
     msg_pages->msg_offset = msg->msg_offset;
     msg_pages->header_len = 0;
 
@@ -310,7 +310,7 @@ GetFileSession::readTask (void * const _self)
         {
             Sender::MessageEntry_Pages * const msg_pages = Sender::MessageEntry_Pages::createNew ();
             msg_pages->page_pool = self->page_pool;
-            msg_pages->first_page = mp4_header.first;
+            msg_pages->setFirstPage (mp4_header.first);
             msg_pages->msg_offset = 0;
             msg_pages->header_len = 0;
 

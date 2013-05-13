@@ -274,7 +274,7 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
         Sender::MessageEntry_Pages * const idx_msg = Sender::MessageEntry_Pages::createNew ();
         Byte * const msg_header = idx_msg->getHeaderData();
         idx_msg->page_pool  = page_pool;
-        idx_msg->first_page = NULL;
+        idx_msg->setFirstPage (NULL);
         idx_msg->msg_offset = 0;
         memcpy (msg_header, idx_entry, sizeof (idx_entry));
         idx_msg->header_len = sizeof (idx_entry);
@@ -285,7 +285,7 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
 
     if (msg->prechunk_size == 0) {
         msg_pages->page_pool  = msg->page_pool;
-        msg_pages->first_page = msg->page_list.first;
+        msg_pages->setFirstPage (msg->page_list.first);
         msg_pages->msg_offset = msg->msg_offset;
 
         msg->page_pool->msgRef (msg->page_list.first);
@@ -302,7 +302,7 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
                                                  &norm_page_list,
                                                  &norm_msg_offs);
         msg_pages->page_pool  = norm_page_pool;
-        msg_pages->first_page = norm_page_list.first;
+        msg_pages->setFirstPage (norm_page_list.first);
         msg_pages->msg_offset = norm_msg_offs;
     }
 
@@ -391,7 +391,7 @@ MediaRecorder::openVdatFile (ConstMemory const _filename,
 
             msg_pages->header_len = 0;
             msg_pages->page_pool  = page_pool;
-            msg_pages->first_page = page_list.first;
+            msg_pages->setFirstPage (page_list.first);
             msg_pages->msg_offset = 0;
 
             recording->vdat_sender.sendMessage (msg_pages, true /* do_flush */);

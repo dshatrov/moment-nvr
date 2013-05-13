@@ -54,7 +54,9 @@ private:
 
         Recording ()
             : vdat_sender (this /* coderef_container */),
+              vdat_conn   (this /* coderef_container */),
               idx_sender  (this /* coderef_container */),
+              idx_conn    (this /* coderef_container */),
               cur_data_offset (0)
         {}
     };
