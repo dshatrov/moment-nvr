@@ -168,7 +168,7 @@
     var state_seq = 0;
     function requestState () {
         state_seq = state_seq + 1;
-        $.get ("/mod_nvr/channel_state?stream={{MyPlayerAutoplayStreamName}}&seq=" + state_seq,
+        $.get ("/mod_nvr/channel_state?stream={{NvrStreamName}}&seq=" + state_seq,
             {}, processStateReply);
     }
 
@@ -211,7 +211,7 @@
                     var y = e.pageY - this.offsetTop;
                     var time = Math.floor (reference_pos - ($(window).width() / 2 - x));
                     setPlayStartPosition (time, true);
-                    document ["MyPlayer"].setSource ("{{MyPlayerAutoplayUri}}", "{{MyPlayerAutoplayStreamName}}?start=" + time);
+                    document ["MyPlayer"].setSource ("rtmp://{{ThisRtmpServerAddr}}/nvr/", "{{NvrStreamName}}?start=" + time);
                 });
 
                 $("#progressbar").mousemove (function (e) {
@@ -228,7 +228,7 @@
                     mark_cursor_sel.style.left = (mark_cursor_x + reference_pos - time) + 'px';
                     reference_pos = time;
                     setPlayStartPosition (time, true);
-                    document ["MyPlayer"].setSource ("{{MyPlayerAutoplayUri}}", "{{MyPlayerAutoplayStreamName}}?start=" + time);
+                    document ["MyPlayer"].setSource ("rtmp://{{ThisRtmpServerAddr}}/nvr/", "{{NvrStreamName}}?start=" + time);
                 });
 
                 function doDownload (download) {
@@ -255,11 +255,8 @@
                 $("#live-button").click (function (e) {
                     var cur_local_unixtime = Math.floor ((new Date).getTime() / 1000);
                     setPlayStartPosition (unixtime + (cur_local_unixtime - local_unixtime), false);
-                    document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}");
+                    document ["MyPlayer"].setSource ("rtmp://{{ThisRtmpServerAddr}}", "{{NvrStreamName}}");
                 });
-
-                /* Moved to flashInitialized().
-                 * document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}"); */
 
                 setInterval (
                     function () {
@@ -279,7 +276,7 @@
                     showRecording ();
 
                     state_seq = state_seq + 1;
-                    $.get ("/mod_nvr_admin/rec_" + (was_on ? "off" : "on") + "?stream={{MyPlayerAutoplayStreamName}}&seq=" + state_seq,
+                    $.get ("/mod_nvr_admin/rec_" + (was_on ? "off" : "on") + "?stream={{NvrStreamName}}&seq=" + state_seq,
                         {}, processStateReply);
                 });
             }
@@ -288,7 +285,7 @@
 
     function flashInitialized ()
     {
-        document ["MyPlayer"].setSource ("{{NvrLiveUri}}", "{{MyPlayerAutoplayStreamName}}");
+        document ["MyPlayer"].setSource ("rtmp://{{ThisRtmpServerAddr}}", "{{NvrStreamName}}");
     }
 
     function doResize () {
@@ -314,8 +311,8 @@
             <param name="salign" value="lt"/>
             <param name="bgcolor" value="#000000"/>
             <param name="allowFullScreen" value="true"/>
-            <param name="FlashVars" value="{{#MyPlayerAutoplay_OFF}}autoplay=0&{{/MyPlayerAutoplay_OFF}}playlist={{#MyPlayerPlaylist_ON}}1{{/MyPlayerPlaylist_ON}}{{#MyPlayerPlaylist_OFF}}0{{/MyPlayerPlaylist_OFF}}&buffer={{MyPlayerBuffer}}{{#MyPlayerAutoplayUri_ON}}&uri={{MyPlayerAutoplayUri}}&stream={{MyPlayerAutoplayStreamName}}{{/MyPlayerAutoplayUri_ON}}"/>
-            <embed              FlashVars="{{#MyPlayerAutoplay_OFF}}autoplay=0&{{/MyPlayerAutoplay_OFF}}playlist={{#MyPlayerPlaylist_ON}}1{{/MyPlayerPlaylist_ON}}{{#MyPlayerPlaylist_OFF}}0{{/MyPlayerPlaylist_OFF}}&buffer={{MyPlayerBuffer}}{{#MyPlayerAutoplayUri_ON}}&uri={{MyPlayerAutoplayUri}}&stream={{MyPlayerAutoplayStreamName}}{{/MyPlayerAutoplayUri_ON}}"
+            <param name="FlashVars" value="autoplay=0&playlist=0&buffer={{NvrPlayerBuffer}}"/>
+            <embed              FlashVars="autoplay=0&playlist=0&buffer={{NvrPlayerBuffer}}"
                 src="MyPlayer.swf?1"
                 bgcolor="#000000"
                 width="100%"
