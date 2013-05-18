@@ -125,23 +125,23 @@ MomentNvrModule::httpRequest (HttpRequest  * const mt_nonnull req,
         ChannelRecorder::ChannelResult const res =
                 self->channel_recorder->getChannelState (channel_name, &channel_state);
         if (res == ChannelRecorder::ChannelResult_ChannelNotFound) {
-            ConstMemory const reply_body = "404 Channel Not Found (mod_nvr_admin)";
+            ConstMemory const reply_body = "404 Channel Not Found (mod_nvr)";
             conn_sender->send (self->page_pool,
                                true /* do_flush */,
                                MOMENT_SERVER__404_HEADERS (reply_body.len()),
                                "\r\n",
                                reply_body);
-            logA_ ("mod_nvr_admin 404 ", req->getClientAddress(), " ", req->getRequestLine());
+            logA_ ("mod_nvr 404 ", req->getClientAddress(), " ", req->getRequestLine());
             goto _return;
         } else
         if (res == ChannelRecorder::ChannelResult_Failure) {
-            ConstMemory const reply_body = "500 Internal Server Error (mod_nvr_admin)";
+            ConstMemory const reply_body = "500 Internal Server Error (mod_nvr)";
             conn_sender->send (self->page_pool,
                                true /* do_flush */,
                                MOMENT_SERVER__404_HEADERS (reply_body.len()),
                                "\r\n",
                                reply_body);
-            logA_ ("mod_nvr_admin 500 ", req->getClientAddress(), " ", req->getRequestLine());
+            logA_ ("mod_nvr 500 ", req->getClientAddress(), " ", req->getRequestLine());
             goto _return;
         }
         assert (res == ChannelRecorder::ChannelResult_Success);
@@ -153,7 +153,7 @@ MomentNvrModule::httpRequest (HttpRequest  * const mt_nonnull req,
                            "\r\n",
                            reply_body->mem());
 
-        logA_ ("mod_nvr_admin 200 ", req->getClientAddress(), " ", req->getRequestLine());
+        logA_ ("mod_nvr 200 ", req->getClientAddress(), " ", req->getRequestLine());
     } else
     if (req->getNumPathElems() >= 2
         && (equal (req->getPath (1), "file") ||
@@ -202,7 +202,7 @@ _bad_request:
 		"\r\n",
 		reply_body);
 
-	logA_ ("lectorium 400 ", req->getClientAddress(), " ", req->getRequestLine());
+	logA_ ("mod_nvr 400 ", req->getClientAddress(), " ", req->getRequestLine());
     }
 
 _return:
@@ -303,7 +303,7 @@ _bad_request:
 		"\r\n",
 		reply_body);
 
-	logA_ ("lectorium 400 ", req->getClientAddress(), " ", req->getRequestLine());
+	logA_ ("mod_nvr 400 ", req->getClientAddress(), " ", req->getRequestLine());
     }
 #endif
 
@@ -330,6 +330,7 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
             logE_ (_func, opt_name, " config option is not set, disabling mod_nvr");
             return;
         }
+        logI_ (_func, opt_name, ": ", record_dir_mem);
     }
     record_dir = st_grab (new (std::nothrow) String (record_dir_mem));
 
@@ -344,7 +345,7 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
             logI_ (_func, opt_name, ": ", file_duration_sec);
     }
 
-    Uint64 max_age_minutes = 60;
+    Uint64 max_age_minutes = 120;
     {
         ConstMemory const opt_name = "mod_nvr/max_age";
         MConfig::GetResult const res =
@@ -359,7 +360,7 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
     page_pool = moment->getPagePool();
 
     Ref<NamingScheme> const naming_scheme =
-            grab (new (std::nothrow) DefaultNamingScheme (3600 /* file_duration_sec */ /* TODO Config parameter */));
+            grab (new (std::nothrow) DefaultNamingScheme (file_duration_sec));
     Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs (record_dir_mem);
 
     channel_recorder = grab (new (std::nothrow) ChannelRecorder);

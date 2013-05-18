@@ -166,7 +166,7 @@ NvrFileIterator::getNext ()
 
     Ref<Vfs::VfsDirectory> const dir = vfs->openDirectory (stream_name->mem());
     if (!dir) {
-        logE_ (_func, "vfs->openDirectory() failed: ", exc->toString());
+        logD_ (_func, "vfs->openDirectory() failed: ", stream_name->mem(), ": ", exc->toString());
         return NULL;
     }
 
