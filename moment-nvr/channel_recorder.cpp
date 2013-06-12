@@ -17,6 +17,8 @@
 */
 
 
+#include <moment-nvr/inc.h>
+
 #include <moment-nvr/channel_recorder.h>
 
 
@@ -190,7 +192,8 @@ ChannelRecorder::doCreateChannel (ChannelManager::ChannelInfo * const mt_nonnull
     channel_entry->nvr_cleaner->init (moment->getServerApp()->getServerContext()->getMainThreadContext()->getTimers(),
                                       vfs,
                                       channel_info->channel_name,
-                                      max_age_sec);
+                                      max_age_sec,
+                                      clean_interval_sec);
 
     mutex.lock ();
 #warning TODO Deal with duplicate channel names.
@@ -279,7 +282,8 @@ mt_const void
 ChannelRecorder::init (MomentServer * const mt_nonnull moment,
                        Vfs          * const mt_nonnull vfs,
                        NamingScheme * const mt_nonnull naming_scheme,
-                       Time           const max_age_sec)
+                       Time           const max_age_sec,
+                       Time           const clean_interval_sec)
 {
     logD_ (_func_);
 
@@ -287,8 +291,11 @@ ChannelRecorder::init (MomentServer * const mt_nonnull moment,
     this->vfs = vfs;
     this->naming_scheme = naming_scheme;
     this->max_age_sec = max_age_sec;
+    this->clean_interval_sec = clean_interval_sec;
 
     Ref<ChannelManager> const channel_manager = moment->getChannelManager();
+
+    MOMENT_NVR__CHANNEL_RECORDER
 
     {
         channel_manager->channelManagerLock ();
@@ -310,7 +317,8 @@ ChannelRecorder::init (MomentServer * const mt_nonnull moment,
 }
 
 ChannelRecorder::ChannelRecorder ()
-    : max_age_sec (3600)
+    : max_age_sec (3600),
+      clean_interval_sec (5)
 {
 }
 

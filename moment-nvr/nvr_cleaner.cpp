@@ -18,6 +18,7 @@
 
 
 #include <moment-nvr/nvr_file_iterator.h>
+#include <moment-nvr/inc.h>
 
 #include <moment-nvr/nvr_cleaner.h>
 
@@ -104,6 +105,9 @@ NvrCleaner::cleanupTimerTick (void * const _self)
         if (file_unixtime_sec < cur_unixtime_sec
             && cur_unixtime_sec - file_unixtime_sec > self->max_age_sec)
         {
+            // Closing .vdat file before deleting it.
+            vdat_file = NULL;
+
             logD_ (_func, "Removing ", vdat_filename);
             self->doRemoveFiles (vdat_filename->mem(), idx_filename->mem());
         } else {
@@ -116,16 +120,21 @@ mt_const void
 NvrCleaner::init (Timers      * const mt_nonnull timers,
                   Vfs         * const mt_nonnull vfs,
                   ConstMemory   const stream_name,
-                  Time          const max_age_sec)
+                  Time          const max_age_sec,
+                  Time          const clean_interval_sec)
 {
     this->vfs = vfs;
     this->stream_name = st_grab (new (std::nothrow) String (stream_name));
     this->max_age_sec = max_age_sec;
 
-    timers->addTimer (CbDesc<Timers::TimerCallback> (cleanupTimerTick, this, this),
-                      5    /* time_seconds */,
-                      true /* periodical */,
-                      true /* auto_delete */);
+    if (clean_interval_sec) {
+        timers->addTimer (CbDesc<Timers::TimerCallback> (cleanupTimerTick, this, this),
+                          5    /* time_seconds */,
+                          true /* periodical */,
+                          true /* auto_delete */);
+    }
+
+    MOMENT_NVR__NVR_CLEANER
 }
 
 }

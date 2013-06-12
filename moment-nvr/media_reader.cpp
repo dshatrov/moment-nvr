@@ -530,6 +530,7 @@ MediaReader::init (PagePool    * const mt_nonnull page_pool,
     this->start_unixtime_sec = start_unixtime_sec;
     this->burst_size_limit = burst_size_limit;
 
+    logD_ (_func, "start_unixtime_sec: ", start_unixtime_sec);
     file_iter.init (vfs, stream_name, start_unixtime_sec);
 }
 

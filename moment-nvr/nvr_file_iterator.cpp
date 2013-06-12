@@ -127,25 +127,36 @@ NvrFileIterator::getNext_rec (Vfs::VfsDirectory * const mt_nonnull parent_dir,
         AvlTree<unsigned>::bl_iterator iter (vdat_tree);
         unsigned prv_number = 0;
         bool got_prv_number = false;
+        bool got_number = false;
+        unsigned number = 0;
         while (!iter.done()) {
-            unsigned number = iter.next ()->value;
+            number = iter.next ()->value;
 
-            unsigned const tmp_prv_number = prv_number;
-            unsigned const tmp_got_prv_number = got_prv_number;
             prv_number = number;
             got_prv_number = true;
 
             if (number < target) {
+                logD (file_iter, _func, "less than target: ", number, " < ", target);
                 continue;
             } else
             if (number == target) {
-                if (got_first && parent_pos_match)
+                if (got_first && parent_pos_match) {
+                    logD (file_iter, _func, "number == target; got_first && parent_pos_match");
                     continue;
-            } else {
-                assert (number > target);
-                if (!got_first && parent_pos_match && tmp_got_prv_number)
-                    number = tmp_prv_number;
+                }
             }
+
+            got_number = true;
+            break;
+        }
+
+        if (!got_number && !got_first && parent_pos_match && got_prv_number) {
+            number = prv_number;
+            got_number = true;
+        }
+
+        if (got_number) {
+            logD (file_iter, _func, "match: ", number);
 
             got_first = true;
             cur_pos [depth] = number;
@@ -193,6 +204,8 @@ NvrFileIterator::doSetCurPos (Time const start_unixtime_sec)
     cur_pos [3] = tm.tm_hour;
     cur_pos [4] = tm.tm_min;
     cur_pos [5] = tm.tm_sec;
+
+    logD (file_iter, _func, "cur_pos (", start_unixtime_sec,"): ", makePathForDepth ("", 5, cur_pos));
 }
 
 void

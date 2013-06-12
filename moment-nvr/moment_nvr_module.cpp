@@ -17,6 +17,8 @@
 */
 
 
+#include <moment-nvr/inc.h>
+
 #include <moment-nvr/moment_nvr_module.h>
 
 
@@ -355,7 +357,18 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
         else
             logI_ (_func, opt_name, ": ", max_age_minutes);
     }
-    Uint64 const max_age_sec = max_age_minutes * 60;
+    Uint64 max_age_sec = max_age_minutes * 60;
+
+    Uint64 clean_interval_sec = 5;
+    {
+        ConstMemory const opt_name = "mod_nvr/clean_interval";
+        MConfig::GetResult const res =
+                config->getUint64_default (opt_name, &clean_interval_sec, clean_interval_sec);
+        if (!res)
+            logE_ (_func, "Invalid value for config option ", opt_name, ": ", config->getString (opt_name));
+        else
+            logI_ (_func, opt_name, ": ", clean_interval_sec);
+    }
 
     page_pool = moment->getPagePool();
 
@@ -363,8 +376,10 @@ MomentNvrModule::init (MomentServer * const mt_nonnull moment)
             grab (new (std::nothrow) DefaultNamingScheme (file_duration_sec));
     Ref<Vfs> const vfs = Vfs::createDefaultLocalVfs (record_dir_mem);
 
+    MOMENT_NVR__INIT
+
     channel_recorder = grab (new (std::nothrow) ChannelRecorder);
-    channel_recorder->init (moment, vfs, naming_scheme, max_age_sec);
+    channel_recorder->init (moment, vfs, naming_scheme, max_age_sec, clean_interval_sec);
 
     media_viewer = grab (new (std::nothrow) MediaViewer);
     media_viewer->init (moment, vfs);

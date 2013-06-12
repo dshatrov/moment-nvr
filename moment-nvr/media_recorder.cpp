@@ -293,10 +293,7 @@ MediaRecorder::doRecordMessage (VideoStream::Message * const mt_nonnull msg,
         PagePool *norm_page_pool;
         PagePool::PageListHead norm_page_list;
         Size norm_msg_offs;
-        RtmpConnection::normalizePrechunkedData (msg->page_pool,
-                                                 &msg->page_list,
-                                                 msg->msg_offset,
-                                                 msg->prechunk_size,
+        RtmpConnection::normalizePrechunkedData (msg,
                                                  msg->page_pool,
                                                  &norm_page_pool,
                                                  &norm_page_list,
@@ -353,7 +350,7 @@ MediaRecorder::openVdatFile (ConstMemory const _filename,
         return Result::Failure;
     }
 
-    recording->vdat_conn.init (recording->vdat_file->getFile());
+    recording->vdat_conn.init (thread_ctx->getDeferredProcessor(), recording->vdat_file->getFile());
 
     recording->vdat_sender.setConnection (&recording->vdat_conn);
     recording->vdat_sender.setQueue (thread_ctx->getDeferredConnectionSenderQueue());
@@ -432,7 +429,7 @@ MediaRecorder::openIdxFile (ConstMemory const _filename)
     // TODO After that, get the last idx entry and find the last valid frame
     //      in vdat, discarding trailing garbage.
 
-    recording->idx_conn.init (recording->idx_file->getFile());
+    recording->idx_conn.init (thread_ctx->getDeferredProcessor(), recording->idx_file->getFile());
 
     recording->idx_sender.setConnection (&recording->idx_conn);
     recording->idx_sender.setQueue (thread_ctx->getDeferredConnectionSenderQueue());

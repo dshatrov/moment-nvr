@@ -27,12 +27,14 @@ using namespace Moment;
 
 namespace MomentNvr {
 
+static LogGroup libMary_logGroup_viewer ("mod_nvr.media_viewer", LogLevel::I);
+
 MediaReader::ReadFrameResult
 MediaViewer::endFrame (Session              * const mt_nonnull session,
                        VideoStream::Message * const mt_nonnull msg)
 {
     if (session->send_blocked.get()) {
-        logD_ (_func, "send_blocked");
+        logD (viewer, _func, "send_blocked");
         return MediaReader::ReadFrameResult_BurstLimit;
     }
 
@@ -50,10 +52,14 @@ MediaViewer::endFrame (Session              * const mt_nonnull session,
             Time const ts_delta = msg->timestamp_nanosec - session->first_frame_ts;
             Time const srv_delta = srv_time - session->first_frame_srv_time;
 
+//            logD_ (_func, "ts_delta: ", ts_delta, ", "
+//                   "srv_delta: ", srv_delta, ", burst_high_mark: ", burst_high_mark);
+
             if (ts_delta >= srv_delta
                 && ts_delta - srv_delta >= burst_high_mark)
             {
-                logD_ (_func, "BurstLimit");
+                logD (viewer, _func, "BurstLimit: ts_delta: ", ts_delta, ", "
+                      "srv_delta: ", srv_delta, ", burst_high_mark: ", burst_high_mark);
                 return MediaReader::ReadFrameResult_BurstLimit;
             }
         }
@@ -95,7 +101,7 @@ void
 MediaViewer::sendMoreData (Session * const mt_nonnull session)
 {
     if (session->send_blocked.get()) {
-        logD_ (_func, "send_blocked");
+        logD (viewer, _func, "send_blocked");
         return;
     }
 
@@ -108,17 +114,17 @@ MediaViewer::sendMoreData (Session * const mt_nonnull session)
         }
 
         if (res == MediaReader::ReadFrameResult_BurstLimit) {
-            logD_ (_func, "ReadFrameResult_BurstLimit");
+            logD (viewer, _func, "ReadFrameResult_BurstLimit");
             return;
         }
 
         if (res == MediaReader::ReadFrameResult_NoData) {
-            logD_ (_func, "ReadFrameResult_NoData");
+            logD (viewer, _func, "ReadFrameResult_NoData");
             return;
         }
 
         if (res == MediaReader::ReadFrameResult_Finish) {
-            logD_ (_func, "ReadFrameResult_Finish");
+            logD (viewer, _func, "ReadFrameResult_Finish");
             return;
         }
 
@@ -149,8 +155,8 @@ void
 MediaViewer::streamNumWatchersChanged (Count   const num_watchers,
                                        void  * const _session)
 {
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session, ", "
-           "num_watchers: ", fmt_def, num_watchers);
+    logD (viewer, _func, "session 0x", fmt_hex, (UintPtr) _session, ", "
+          "num_watchers: ", fmt_def, num_watchers);
 
     Session * const session = static_cast <Session*> (_session);
     Ref<MediaViewer> const self = session->weak_media_viewer.getRef ();
@@ -223,8 +229,8 @@ MediaViewer::rtmpClientConnected (MomentServer::ClientSession * const client_ses
 
     session->send_blocked.set (0);
 
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) session.ptr(), ", "
-           "app_name: ", app_name, ", full_app_name: ", full_app_name);
+    logD (viewer, _func, "session 0x", fmt_hex, (UintPtr) session.ptr(), ", "
+          "app_name: ", app_name, ", full_app_name: ", full_app_name);
 
     self->mutex.lock ();
 
@@ -259,13 +265,13 @@ MediaViewer::rtmpCommandMessage (RtmpConnection       * const mt_nonnull rtmp_co
                                  AmfDecoder           * const mt_nonnull amf_decoder,
                                  void                 * const _session)
 {
-    logD_ (_func, "session: 0x", fmt_hex, (UintPtr) _session);
+    logD (viewer, _func, "session: 0x", fmt_hex, (UintPtr) _session);
 }
 
 void
 MediaViewer::rtmpClientDisconnected (void * const _session)
 {
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session);
+    logD (viewer, _func, "session 0x", fmt_hex, (UintPtr) _session);
 
     Session * const session = static_cast <Session*> (_session);
     Ref<MediaViewer> const self = session->weak_media_viewer.getRef ();
@@ -298,7 +304,7 @@ MediaViewer::parseStreamParams_paramCallback (ConstMemory   const name,
 {
     StreamParams * const stream_params = static_cast <StreamParams*> (_stream_params);
 
-    logD_ (_func, "name: ", name, ", value: ", value);
+    logD (viewer, _func, "name: ", name, ", value: ", value);
 
     if (equal (name, "start")) {
         Time start_unixtime_sec = 0;
@@ -319,7 +325,7 @@ MediaViewer::parseStreamParams (ConstMemory    const stream_name_with_params,
     Byte const * const name_sep = (Byte const *) memchr (stream_name.mem(), '?', stream_name.len());
     if (name_sep) {
         ConstMemory const params_mem = stream_name.region (name_sep + 1 - stream_name.mem());
-        logD_ (_func, "parameters: ", params_mem);
+        logD (viewer, _func, "parameters: ", params_mem);
         parseHttpParameters (params_mem,
                              parseStreamParams_paramCallback,
                              stream_params);
@@ -334,7 +340,7 @@ MediaViewer::rtmpStartWatching (ConstMemory        const stream_name,
                                 Ref<VideoStream> * const mt_nonnull ret_stream,
                                 void             * const _session)
 {
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name_with_params);
+    logD (viewer, _func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name_with_params);
 
     Session * const session = static_cast <Session*> (_session);
 
@@ -347,7 +353,7 @@ MediaViewer::rtmpStartWatching (ConstMemory        const stream_name,
 
     StreamParams stream_params;
     parseStreamParams (stream_name_with_params, &stream_params);
-    logD_ (_func, "start_unixtime_sec: ", stream_params.start_unixtime_sec, ", getUnixtime(): ", getUnixtime());
+    logD (viewer, _func, "start_unixtime_sec: ", stream_params.start_unixtime_sec, ", getUnixtime(): ", getUnixtime());
 
     session->session_mutex.lock ();
     if (session->watching) {
@@ -385,7 +391,7 @@ MediaViewer::rtmpStartStreaming (ConstMemory     const stream_name,
                                  Result        * const mt_nonnull ret_res,
                                  void          * const _session)
 {
-    logD_ (_func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name);
+    logD (viewer, _func, "session 0x", fmt_hex, (UintPtr) _session, ", stream_name: ", stream_name);
     *ret_res = Result::Failure;
     return true;
 }

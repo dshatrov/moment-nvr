@@ -24,7 +24,8 @@ moment_nvr_private_headers =    \
         media_reader.h          \
         media_viewer.h          \
         get_file_session.h      \
-        moment_nvr_module.h
+        moment_nvr_module.h     \
+        inc.h
 
 moment_nvr_target_headers =
 

@@ -45,7 +45,8 @@ public:
     mt_const void init (Timers      * mt_nonnull timers,
                         Vfs         * mt_nonnull vfs,
                         ConstMemory  stream_name,
-                        Time         max_age_sec);
+                        Time         max_age_sec,
+                        Time         clean_interval_sec);
 };
 
 }

@@ -235,7 +235,7 @@
                     var duration = $("#download-minutes").val() * 60;
                     if (duration == 0)
                         duration = 60;
-                    var link =  "http://{{ThisHttpServerAddr}}/mod_nvr/file.mp4?stream=test&start="
+                    var link =  "http://{{ThisHttpServerAddr}}/mod_nvr/file.mp4?stream={{NvrStreamName}}&start="
                                     + getPosInputUnixtime()
                                     + "&duration=" + duration + (download ? "&download" : "");
                     if (download)
@@ -276,7 +276,7 @@
                     showRecording ();
 
                     state_seq = state_seq + 1;
-                    $.get ("/mod_nvr_admin/rec_" + (was_on ? "off" : "on") + "?stream={{NvrStreamName}}&seq=" + state_seq,
+                    $.get ("http://{{ThisAdminServerAddr}}/mod_nvr_admin/rec_" + (was_on ? "off" : "on") + "?stream={{NvrStreamName}}&seq=" + state_seq,
                         {}, processStateReply);
                 });
             }
