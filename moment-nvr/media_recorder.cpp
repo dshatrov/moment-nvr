@@ -58,6 +58,7 @@ MediaRecorder::recordStreamHeaders ()
             pending_avc_seq_hdr.page_pool->msgRef (pending_avc_seq_hdr.page_list.first);
 
         got_pending_avc_seq_hdr = true;
+        got_avc_seq_hdr = true;
     }
 
     cur_stream->unlock ();
@@ -100,6 +101,15 @@ MediaRecorder::recordAudioMessage (VideoStream::AudioMessage * const mt_nonnull 
 mt_mutex (mutex) void
 MediaRecorder::recordVideoMessage (VideoStream::VideoMessage * const mt_nonnull video_msg)
 {
+    if (!got_avc_seq_hdr) {
+        if (video_msg->frame_type == VideoStream::VideoFrameType::AvcSequenceHeader) {
+            got_avc_seq_hdr = true;
+        } else {
+            logD_ (_this_func, "no AVC sequence header, skipping video messsage");
+            return;
+        }
+    }
+
     Byte header [2];
     header [0] = (Byte) 1 /* video message */;
     header [1] = (Byte) toVideoRecordFrameType (video_msg->frame_type);
@@ -711,6 +721,7 @@ MediaRecorder::MediaRecorder ()
       prv_unixtime_timestamp_nanosec (0),
       got_pending_aac_seq_hdr        (false),
       got_pending_avc_seq_hdr        (false),
+      got_avc_seq_hdr                (false),
       next_idx_unixtime_nanosec      (0),
       next_file_unixtime_nanosec     (0),
       postwrite_active               (false),

@@ -119,11 +119,13 @@ private:
     mt_mutex (mutex) Time unixtime_offset_nanosec;
     mt_mutex (mutex) Time prv_unixtime_timestamp_nanosec;
 
-    bool got_pending_aac_seq_hdr;
+    mt_mutex (mutex) bool got_pending_aac_seq_hdr;
     mt_mutex (mutex) VideoStream::AudioMessage pending_aac_seq_hdr;
 
-    bool got_pending_avc_seq_hdr;
+    mt_mutex (mutex) bool got_pending_avc_seq_hdr;
     mt_mutex (mutex) VideoStream::VideoMessage pending_avc_seq_hdr;
+
+    mt_mutex (mutex) bool got_avc_seq_hdr;
 
     mt_mutex (mutex) Time next_idx_unixtime_nanosec;
 
